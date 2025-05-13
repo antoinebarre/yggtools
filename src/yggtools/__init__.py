@@ -1,2 +1,2 @@
 def main() -> None:
-    print("Hello from yggtools!")
+    print("Hello from yggtools!!")
