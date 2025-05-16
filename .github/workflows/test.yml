@@ -31,7 +31,14 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Run tests
-        run: uv run pytest -v
+        run: uv run pytest -v --html=report.html --self-contained-html
+
+      - name: Upload test report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: report.html
+
 
       - name: Run tests with coverage
         run: uv run pytest --cov=yggtools --cov-report=term --cov-report=xml
