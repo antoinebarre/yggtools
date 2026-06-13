@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 
@@ -43,6 +44,63 @@ class CheckResult:
     label: str
     passed: bool
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class SuppressionItem:
+    """A single inline suppression comment found in a source file.
+
+    Attributes:
+        file: Path of the source file relative to the project root.
+        line: 1-based line number where the suppression appears.
+        kind: Suppression type: ``noqa``, ``nosec``, ``type: ignore``,
+            or ``pragma: no cover``.
+        code: Specific rule code suppressed, e.g. ``E501``, or empty
+            string when no code is given.
+        excerpt: The source line text, stripped of leading whitespace.
+    """
+
+    file: str
+    line: int
+    kind: str
+    code: str
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class FileChecksum:
+    """SHA-256 checksum for a single file in the audited project.
+
+    Attributes:
+        path: File path relative to the project root.
+        sha256: Lowercase hexadecimal SHA-256 digest.
+    """
+
+    path: str
+    sha256: str
+
+
+@dataclass
+class ReportData:
+    """Aggregated data produced by a single uvforge check run.
+
+    Attributes:
+        project_name: Human-readable name of the audited project.
+        project_dir: Absolute path to the audited project root.
+        uvforge_version: Version string of the running uvforge tool.
+        generated_at: UTC timestamp of report generation.
+        check_results: Ordered list of structural check outcomes.
+        checksums: SHA-256 digests for all audited source files.
+        suppressions: All inline suppression comments found in sources.
+    """
+
+    project_name: str
+    project_dir: Path
+    uvforge_version: str
+    generated_at: datetime
+    check_results: list[CheckResult] = field(default_factory=list)
+    checksums: list[FileChecksum] = field(default_factory=list)
+    suppressions: list[SuppressionItem] = field(default_factory=list)
 
 
 def make_package_name(project_name: str) -> str:

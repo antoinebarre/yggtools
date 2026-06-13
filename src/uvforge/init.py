@@ -32,6 +32,11 @@ _CONFIG_TEMPLATES: list[tuple[str, str]] = [
     ("README.md.tmpl", "README.md"),
 ]
 
+_CI_TEMPLATES: list[tuple[str, str]] = [
+    ("github_ci.yml.tmpl", ".github/workflows/ci.yml"),
+    ("gitlab_ci.yml.tmpl", ".gitlab-ci.yml"),
+]
+
 
 class ConflictError(RuntimeError):
     """Raised when an existing project would be overwritten without --force."""
@@ -74,6 +79,10 @@ def run_init(ctx: ProjectContext) -> None:
 
     _copy_scripts(ctx)
     _console.print("  [green]✓[/green] Quality scripts installed")
+
+    if not ctx.no_git:
+        _write_ci_files(ctx)
+        _console.print("  [green]✓[/green] CI workflows written")
 
     _install_dev_deps(ctx)
     _console.print("  [green]✓[/green] Dev dependencies installed")
@@ -125,6 +134,24 @@ def _write_config_files(ctx: ProjectContext) -> None:
         f"{ctx.python_version}\n",
         dry_run=ctx.dry_run,
     )
+
+
+def _write_ci_files(ctx: ProjectContext) -> None:
+    """Render and write CI workflow files for GitHub Actions and GitLab CI.
+
+    Writes ``.github/workflows/ci.yml`` and ``.gitlab-ci.yml`` into the
+    project directory.  Only called when ``ctx.no_git`` is False.
+
+    Args:
+        ctx: Project context used for template variable substitution.
+    """
+    for template_name, output_name in _CI_TEMPLATES:
+        content = render_template(template_name, ctx)
+        write_file(
+            ctx.project_dir / output_name,
+            content,
+            dry_run=ctx.dry_run,
+        )
 
 
 def _copy_scripts(ctx: ProjectContext) -> None:
@@ -194,6 +221,8 @@ def _print_dry_run_plan(ctx: ProjectContext) -> None:
         "README.md",
         ".python-version",
     ]
+    if not ctx.no_git:
+        paths += [out for _, out in _CI_TEMPLATES]
     for p in paths:
         _console.print(f"  [dim]would create[/dim]  {p}")
 

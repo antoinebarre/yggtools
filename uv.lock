@@ -723,6 +723,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mkforge"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/73/89ab39fd057b8b518b9ef9641fa3e372cce9e5cbb01a0f17a8533a272d71/mkforge-0.1.0.tar.gz", hash = "sha256:b119a2320d4f6724b3bea9108077f2b0ad34b18c2353659089716dc64785be3d", size = 186061, upload-time = "2026-06-06T21:22:02.858Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/19/90/1eff8b8f00284a83f9f9d32c2ce36a2ea0ae6b1a1a0a51a8978631186c30/mkforge-0.1.0-py3-none-any.whl", hash = "sha256:638dcabf45c07f706df2618441e7e7b349590bf516c701a88f569c3d8608a687", size = 75024, upload-time = "2026-06-06T21:22:01.392Z" },
+]
+
+[[package]]
 name = "more-itertools"
 version = "11.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1386,6 +1395,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
+    { name = "mkforge" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -1409,6 +1419,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "mkforge", specifier = ">=0.1" },
     { name = "rich", specifier = ">=13" },
     { name = "typer", specifier = ">=0.12" },
 ]

@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from uvforge.init import ConflictError, _copy_scripts, run_init
+from uvforge.init import (
+    ConflictError,
+    _copy_scripts,
+    _write_ci_files,
+    run_init,
+)
 from uvforge.models import ProjectContext
 from uvforge.uv_runner import UvNotFoundError
 
@@ -209,3 +214,116 @@ def test_run_init_calls_git_when_no_git_false(tmp_path: Path) -> None:
     mock_git_init.assert_called_once()
     mock_git_add.assert_called_once()
     mock_git_commit.assert_called_once()
+
+
+def test_run_init_writes_github_actions_workflow(tmp_path: Path) -> None:
+    """Requirement: run_init writes the GitHub Actions workflow file."""
+    ctx = ProjectContext(
+        project_name="my-lib",
+        package_name="my_lib",
+        python_version="3.12",
+        project_dir=tmp_path / "my-lib",
+        no_git=False,
+    )
+    with (
+        patch("uvforge.init.check_uv_available"),
+        patch("uvforge.init.uv_add_dev_deps"),
+        patch("uvforge.init.uv_sync"),
+        patch("uvforge.init.git_init"),
+        patch("uvforge.init.git_add_all"),
+        patch("uvforge.init.git_commit"),
+    ):
+        run_init(ctx)
+    workflow = ctx.project_dir / ".github" / "workflows" / "ci.yml"
+    assert workflow.exists()
+    content = workflow.read_text()
+    assert "make ci" in content
+    assert "3.12" in content
+    assert "3.13" in content
+
+
+def test_run_init_writes_gitlab_ci(tmp_path: Path) -> None:
+    """Requirement: run_init writes .gitlab-ci.yml when no_git=False."""
+    ctx = ProjectContext(
+        project_name="my-lib",
+        package_name="my_lib",
+        python_version="3.12",
+        project_dir=tmp_path / "my-lib",
+        no_git=False,
+    )
+    with (
+        patch("uvforge.init.check_uv_available"),
+        patch("uvforge.init.uv_add_dev_deps"),
+        patch("uvforge.init.uv_sync"),
+        patch("uvforge.init.git_init"),
+        patch("uvforge.init.git_add_all"),
+        patch("uvforge.init.git_commit"),
+    ):
+        run_init(ctx)
+    gitlab_ci = ctx.project_dir / ".gitlab-ci.yml"
+    assert gitlab_ci.exists()
+    content = gitlab_ci.read_text()
+    assert "make ci" in content
+    assert "3.12" in content
+    assert "3.13" in content
+
+
+def test_run_init_no_ci_files_when_no_git(tmp_path: Path) -> None:
+    """Requirement: run_init must not write CI files when no_git=True."""
+    ctx = _ctx(tmp_path, no_git=True)
+    with (
+        patch("uvforge.init.check_uv_available"),
+        patch("uvforge.init.uv_add_dev_deps"),
+        patch("uvforge.init.uv_sync"),
+    ):
+        run_init(ctx)
+    assert not (ctx.project_dir / ".github").exists()
+    assert not (ctx.project_dir / ".gitlab-ci.yml").exists()
+
+
+def test_write_ci_files_dry_run_writes_nothing(tmp_path: Path) -> None:
+    """Requirement: _write_ci_files must write nothing in dry_run mode."""
+    ctx = ProjectContext(
+        project_name="my-lib",
+        package_name="my_lib",
+        python_version="3.12",
+        project_dir=tmp_path / "my-lib",
+        dry_run=True,
+        no_git=False,
+    )
+    _write_ci_files(ctx)
+    assert not (ctx.project_dir / ".github").exists()
+    assert not (ctx.project_dir / ".gitlab-ci.yml").exists()
+
+
+def test_run_init_dry_run_lists_ci_files_for_git_project(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Requirement: dry-run output includes CI files when no_git=False."""
+    ctx = ProjectContext(
+        project_name="my-lib",
+        package_name="my_lib",
+        python_version="3.12",
+        project_dir=tmp_path / "my-lib",
+        dry_run=True,
+        no_git=False,
+    )
+    with patch("uvforge.init.check_uv_available"):
+        run_init(ctx)
+    captured = capsys.readouterr()
+    assert ".github/workflows/ci.yml" in captured.out
+    assert ".gitlab-ci.yml" in captured.out
+
+
+def test_run_init_dry_run_omits_ci_files_when_no_git(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Requirement: dry-run output omits CI files when no_git=True."""
+    ctx = _ctx(tmp_path, dry_run=True, no_git=True)
+    with patch("uvforge.init.check_uv_available"):
+        run_init(ctx)
+    captured = capsys.readouterr()
+    assert ".github/workflows/ci.yml" not in captured.out
+    assert ".gitlab-ci.yml" not in captured.out

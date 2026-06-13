@@ -1,8 +1,8 @@
 # SDD — Software Design Document
 
 **Projet :** uvforge  
-**Version :** 1.0  
-**Date :** 2026-06-12  
+**Version :** 1.2  
+**Date :** 2026-06-13  
 **Auteur :** Antoine Barré  
 **Statut :** Draft
 
@@ -89,17 +89,22 @@ src/uvforge/
 ├── renderer.py          # rendu des templates Jinja2
 ├── uv_runner.py         # wrapper subprocess uv/git
 ├── models.py            # dataclasses partagées
+├── suppressions.py      # scan des suppressions inline
+├── report.py            # génération du rapport Markdown
 └── templates/           # ressources statiques (MANIFEST)
     ├── scripts/
     │   ├── check.sh
     │   ├── check_docstrings.py
     │   ├── code_metrics.py
+    │   ├── generate_report.py
     │   ├── security_deps.sh
     │   └── publish.sh
     ├── Makefile.tmpl
     ├── pyproject.toml.tmpl
     ├── gitignore.tmpl
-    └── README.md.tmpl
+    ├── README.md.tmpl
+    ├── github_ci.yml.tmpl
+    └── gitlab_ci.yml.tmpl
 ```
 
 ---
@@ -134,6 +139,32 @@ class ScriptFile:
     """Métadonnées d'un script embarqué."""
     name: str          # "check.sh"
     executable: bool   # True pour les .sh
+
+@dataclass(frozen=True)
+class SuppressionItem:
+    """Une annotation de suppression inline trouvée dans le code source."""
+    file: str      # chemin relatif à project_root
+    line: int      # numéro de ligne (1-indexed)
+    kind: str      # "noqa" | "nosec" | "type: ignore" | "pragma: no cover"
+    code: str      # code associé ("E501", "B603", …) ou "" si bare
+    excerpt: str   # texte de la ligne (stripped)
+
+@dataclass(frozen=True)
+class FileChecksum:
+    """Empreinte SHA-256 d'un fichier source audité."""
+    path: str    # chemin relatif à project_root
+    sha256: str  # hexdigest 64 caractères
+
+@dataclass
+class ReportData:
+    """Données agrégées pour la génération du rapport de qualité."""
+    project_name: str
+    project_dir: Path
+    uvforge_version: str
+    generated_at: datetime
+    check_results: list[CheckResult] = field(default_factory=list)
+    checksums: list[FileChecksum] = field(default_factory=list)
+    suppressions: list[SuppressionItem] = field(default_factory=list)
 ```
 
 ### 3.2 `scaffold.py`
@@ -276,6 +307,10 @@ _write_config_files(ctx)
 _copy_scripts(ctx)
   └── pour chaque script dans templates/scripts/ → copy_script(src, dst)
 
+_write_ci_files(ctx)      [si pas ctx.no_git]
+  ├── render_template("github_ci.yml.tmpl", ctx) → write ".github/workflows/ci.yml"
+  └── render_template("gitlab_ci.yml.tmpl", ctx) → write ".gitlab-ci.yml"
+
 _install_dev_deps(ctx)
   ├── uv_add_dev_deps(ctx.project_dir, DEV_DEPS)
   └── uv_sync(ctx.project_dir)
@@ -342,6 +377,88 @@ MANAGED_FILES: list[str] = [
 ]
 ```
 
+### 3.8 `suppressions.py`
+
+Scanne les fichiers Python d'un projet à la recherche d'annotations de suppression inline.
+
+**Interface publique :**
+
+```python
+def scan_suppressions(src_dirs: list[Path], project_root: Path) -> list[SuppressionItem]:
+    """Parcourt les répertoires donnés et retourne toutes les suppressions trouvées,
+    triées par fichier puis par numéro de ligne."""
+```
+
+**Fonctions internes :**
+
+```python
+def _scan_file(path: Path, project_root: Path) -> list[SuppressionItem]:
+    """Scanne un fichier individuel. Retourne [] si le fichier est illisible."""
+
+def _extract_suppressions(rel_path: str, lineno: int, text: str) -> list[SuppressionItem]:
+    """Extrait toutes les suppressions d'une ligne. Déduplique par (kind, code)."""
+```
+
+**Patterns reconnus :**
+
+| Kind | Syntaxe |
+|---|---|
+| `noqa` | `# noqa: E501` ou `# noqa` |
+| `nosec` | `# nosec B603` ou `# nosec` |
+| `type: ignore` | `# type: ignore[attr-defined]` ou `# type: ignore` |
+| `pragma: no cover` | `# pragma: no cover` |
+
+**Déduplication :** la paire `(kind, code)` est dédupliquée par ligne via un `set` d'émis. Les répertoires inexistants sont silencieusement ignorés.
+
+### 3.9 `report.py`
+
+Construit et écrit le rapport Markdown de qualité à partir d'un `ReportData`.
+
+**Interface publique :**
+
+```python
+def build_report_data(project_dir: Path) -> ReportData:
+    """Collecte toutes les données (résultats check, checksums, suppressions)."""
+
+def collect_checksums(project_dir: Path) -> list[FileChecksum]:
+    """Retourne les checksums SHA-256 de tous les .py dans src/, triés."""
+
+def render_report(data: ReportData) -> Report:
+    """Construit et retourne un objet mkforge.Report prêt à être rendu."""
+
+def save_report(data: ReportData, output: Path) -> None:
+    """Écrit le rapport Markdown à output (crée les répertoires parents si nécessaire)."""
+```
+
+**Fonctions internes (chapitres) :**
+
+```python
+def _summary_chapter(data: ReportData) -> Chapter: ...
+def _check_results_chapter(results: list[CheckResult]) -> Chapter: ...
+def _checksums_chapter(checksums: list[FileChecksum]) -> Chapter: ...
+def _suppressions_chapter(suppressions: list[SuppressionItem]) -> Chapter: ...
+def _sha256(path: Path) -> str: ...
+```
+
+**Structure du rapport généré :**
+
+```
+# Quality Report — <project_name>
+
+## 1. Summary
+  Tableau : Project, Generated at, uvforge version, Checks passed, Checks failed
+
+## 2. Check Results
+  Tableau : Check | Status | Detail
+
+## 3. File Checksums
+  Tableau : File | SHA-256
+
+## 4. Security Suppressions
+  Total : N suppression(s) found
+  Pour chaque fichier : section avec tableau Line | Kind | Code | Excerpt
+```
+
 ---
 
 ## 4. Templates et ressources embarquées
@@ -351,10 +468,9 @@ MANAGED_FILES: list[str] = [
 ```toml
 [tool.hatch.build.targets.wheel]
 packages = ["src/uvforge"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/uvforge/templates" = "uvforge/templates"
 ```
+
+Hatch inclut automatiquement `src/uvforge/templates/` dans le wheel car `templates/` est un sous-package de `uvforge` (présence de `__init__.py`). L'utilisation de `force-include` est proscrite : elle crée un répertoire `uvforge/` à la racine de `site-packages` sans `__init__.py`, ce qui provoque une collision de namespace package masquant le vrai package installé.
 
 Les scripts dans `templates/scripts/` sont des fichiers **statiques** (non-templates Jinja2) — ils sont copiés tels quels.
 
@@ -447,67 +563,68 @@ Voir section 5 du document de conception. Variables : `{{ project_name }}`, `{{ 
 
 ### 5.1 `check.sh` — structure interne
 
+Le script exécute 9 étapes via la fonction `run()` qui :
+1. Redirige stdout/stderr vers `work/<nom>.log`
+2. Écrit `0` ou `1` dans `work/<nom>.exit` (fichier sentinelle lu par `generate_report.py`)
+3. Affiche PASS/FAIL coloré avec un résumé extrait du log
+
+Après le résumé du pipeline, il appelle `generate_report.py` :
+
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Couleurs
-GREEN='\033[0;32m'; RED='\033[0;31m'; RESET='\033[0m'
-SEP="─────────────────────────────────────────"
-
-# Mode CI ou local
-MODE="${1:-local}"
-
-# Nettoyage des logs précédents
-find work -name "*.log" -delete 2>/dev/null || true
-
-PASS=0; FAIL=0
+REPORT_OUTPUT="${REPORT_OUTPUT:-work/report.md}"
 
 run() {
-    local label="$1"; shift
-    local log="work/${label// /_}.log"
+    local name="$1"; shift
+    local log="work/${name}.log"
+    local exit_file="work/${name}.exit"
     if "$@" > "$log" 2>&1; then
-        echo -e "${GREEN}✓ PASS${RESET} — $label"
-        PASS=$((PASS+1))
+        echo "0" > "$exit_file"
+        ...PASS...
     else
-        echo -e "${RED}✗ FAIL${RESET} — $label"
-        FAIL=$((FAIL+1))
+        echo "1" > "$exit_file"
+        ...FAIL...
     fi
 }
 
-# Checks
-if [ "$MODE" = "--ci" ]; then
-    run "format"      uv run ruff format --check src tests scripts
-else
-    run "format"      uv run ruff format src tests scripts
-fi
-run "lint"            uv run ruff check src tests scripts
-run "flake8"          uv run flake8 src tests scripts
-run "docstrings"      uv run python scripts/check_docstrings.py
-run "typecheck"       uv run mypy src tests scripts
-run "metrics"         uv run python scripts/code_metrics.py
-run "security"        uv run bandit -r src -x tests,work
-run "security-deps"   bash scripts/security_deps.sh
-run "test"            uv run pytest
+# Après les 9 étapes :
+uv run python scripts/generate_report.py --output "$REPORT_OUTPUT" \
+    && printf "Report: %s\n" "$REPORT_OUTPUT" \
+    || printf "Warning: report generation failed\n"
 
-# Rapport final
-echo "$SEP"
-echo "Résultat : $PASS PASS — $FAIL FAIL"
-
-if [ "$FAIL" -gt 0 ]; then
-    echo -e "\n${RED}Détails des échecs :${RESET}"
-    for log in work/*.log; do
-        if grep -q "FAIL" "$log" 2>/dev/null; then
-            echo -e "\n─── $(basename "$log") ───"
-            cat "$log"
-        fi
-    done
-fi
-
+cleanup  # supprime work/*.log, work/*.exit — mais PAS work/report.md
 exit "$FAIL"
 ```
 
-### 5.2 `check_docstrings.py` — structure interne
+**cleanup** exclut `report.md` via `! -name "report.md"` pour que le rapport survive au nettoyage.
+
+### 5.2 `generate_report.py` — structure interne
+
+Script autonome (sans import de `uvforge`) embarqué dans `templates/scripts/` et copié dans `scripts/` des projets générés.
+
+**Algorithme principal :**
+
+```
+main(output: Path)
+ ├── _read_check_results(project_root)
+ │    └── pour chaque step in PIPELINE_STEPS
+ │         ├── lire work/<step>.exit → passed (0=True, 1=False)
+ │         └── lire work/<step>.log → detail (dernière ligne pertinente)
+ ├── _collect_checksums(project_root)
+ │    └── sha256 de chaque .py dans src/
+ ├── _scan_suppressions(project_root)
+ │    └── scan de src/ + tests/ + scripts/
+ ├── _build_report(project_name, results, checksums, suppressions)
+ │    └── mkforge.Report avec 4 chapitres
+ └── output.write_text(report.render())
+```
+
+**Contraintes de conception :**
+- `importlib.metadata` importé au niveau module (pas dans une fonction) pour respecter `PLC0415`.
+- `_uvforge_version()` attrape `importlib.metadata.PackageNotFoundError` explicitement (pas `Exception`).
+- Le scan de suppressions est découpé en `_scan_file_suppressions()` + `_extract_line_suppressions()` pour maintenir CC ≤ 10.
+- `PIPELINE_STEPS` liste les 9 noms dans l'ordre d'exécution de `check.sh`.
+
+### 5.3 `check_docstrings.py` — structure interne
 
 ```
 main()
@@ -692,6 +809,8 @@ CLI (cli.py)
         ├── scaffold.copy_script("templates/scripts/code_metrics.py", ...)
         ├── scaffold.copy_script("templates/scripts/security_deps.sh", ...)
         ├── scaffold.copy_script("templates/scripts/publish.sh", ...)
+        ├── renderer.render_template("github_ci.yml.tmpl") → scaffold.write_file(".github/workflows/ci.yml")
+        ├── renderer.render_template("gitlab_ci.yml.tmpl") → scaffold.write_file(".gitlab-ci.yml")
         ├── uv_runner.uv_add_dev_deps(project_dir, DEV_DEPS)
         ├── uv_runner.uv_sync(project_dir)
         ├── uv_runner.git_init(project_dir)
@@ -761,7 +880,9 @@ tests/
 │   ├── test_uv_runner.py       # tests subprocess (mocké)
 │   ├── test_init.py            # tests orchestration (mocks scaffold+renderer+uv)
 │   ├── test_check.py           # tests audit
-│   └── test_update.py          # tests update
+│   ├── test_update.py          # tests update
+│   ├── test_suppressions.py    # tests scan suppressions (tous types, dédup, erreurs)
+│   └── test_report.py          # tests génération rapport (chapitres, checksums, écriture)
 ├── scripts/
 │   ├── test_check_docstrings.py   # tests check_docstrings.py avec fixtures AST
 │   ├── test_code_metrics.py       # tests code_metrics.py avec fixtures de code
@@ -841,3 +962,27 @@ Typer génère les parseurs d'arguments depuis les annotations de type Python, c
 ### 10.6 `work/` : contenu ignoré par git, répertoire tracké
 
 Le fichier `.gitkeep` est créé par uvforge et ajouté dans `.gitignore` avec l'exception `!work/.gitkeep`. Le contenu (`*.log`, `.coverage`, `dist/`, `requirements_runtime.txt`) est ignoré par la règle `work/*`. Ceci reproduit exactement le comportement de mkforge.
+
+### 10.7 Pourquoi `generate_report.py` est un script autonome sans import de `uvforge`
+
+Le script est copié dans `scripts/` du projet cible et exécuté par `uv run` dans cet environnement, qui n'a pas `uvforge` installé. Un import de `uvforge` ferait échouer l'exécution dans tout projet généré. La duplication de la logique de scan de suppressions entre `uvforge.suppressions` et `generate_report.py` est volontaire et documentée.
+
+### 10.8 Pourquoi `mkforge` et non `string.Template` pour le rapport
+
+`mkforge` fournit un DSL Python orienté domaine (`Report`, `Chapter`, `Section`, `Table`, `Paragraph`) avec gestion automatique de la table des matières et des niveaux de titres. `string.Template` produirait du code de concaténation fragile et difficile à tester indépendamment. La dépendance est justifiée car `mkforge` est la bibliothèque de référence de génération de rapports Markdown pour ce projet.
+
+### 10.9 Pourquoi `REPORT_OUTPUT` et non une option CLI de `uvforge`
+
+Le rapport est produit par `check.sh`, pas par `uvforge`. L'utilisateur peut intégrer `check.sh` dans des pipelines CI qui définissent déjà `REPORT_OUTPUT` comme variable d'environnement. Une option CLI supplémentaire sur `uvforge` aurait couplé la génération du rapport à la CLI alors que le workflow principal passe par `make check → check.sh`.
+
+### 10.10 Pourquoi les fichiers sentinelles `work/<nom>.exit`
+
+`generate_report.py` doit reconstruire les résultats du pipeline après que `check.sh` ait terminé. Lire les codes de sortie depuis les fichiers `work/<nom>.exit` est plus robuste que parser les logs (format non stable). Les fichiers sentinelles sont une interface contractuelle explicite entre `check.sh` et `generate_report.py`.
+
+### 10.11 Pourquoi les workflows CI sont des templates Jinja2 et non des fichiers statiques
+
+Contrairement aux scripts de qualité (copiés tels quels), les workflows CI doivent être paramétrés par la version Python cible du projet (`{{ python_version }}`). Un fichier statique forcerait toujours la même version, ou imposerait à l'utilisateur de l'éditer manuellement. La variable `{{ python_version }}` est la seule variable Jinja2 utilisée dans ces templates ; la version 3.13 est fixe car c'est la version stable la plus récente au moment de la génération.
+
+### 10.12 Pourquoi les workflows CI sont omis avec `--no-git`
+
+Les workflows GitHub Actions et GitLab CI n'ont de sens que dans un dépôt git avec un remote configuré. Générer ces fichiers sans dépôt git crée une confusion sans valeur ajoutée. L'option `--no-git` signale explicitement l'absence d'intention de versionnement — omettre les workflows CI est la conséquence logique.

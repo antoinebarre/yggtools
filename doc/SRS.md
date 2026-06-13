@@ -1,8 +1,8 @@
 # SRS — Software Requirements Specification
 
 **Projet :** uvforge  
-**Version :** 1.0  
-**Date :** 2026-06-12  
+**Version :** 1.2  
+**Date :** 2026-06-13  
 **Auteur :** Antoine Barré  
 **Statut :** Draft
 
@@ -94,6 +94,7 @@ uvforge est un outil de développeur (`dev tool`) destiné à être installé gl
 | F-05 | Configurer les dépendances dev via `uv` |
 | F-06 | Auditer la conformité d'un projet existant |
 | F-07 | Mettre à jour les scripts gérés vers la version courante |
+| F-08 | Générer les workflows CI pour GitHub Actions et GitLab CI |
 
 ### 2.3 Profil utilisateur
 
@@ -185,6 +186,24 @@ uvforge SHALL supporter l'option `--dry-run` qui affiche la liste des fichiers q
 #### REQ-INIT-19
 Le nom du package Python SHALL être dérivé du `PROJECT_NAME` en remplaçant les `-` par `_` et en passant en minuscules.
 
+#### REQ-INIT-20
+uvforge SHALL générer `.github/workflows/ci.yml` (GitHub Actions) et `.gitlab-ci.yml` (GitLab CI) sauf si `--no-git` est spécifié.
+
+#### REQ-INIT-21
+Les workflows CI générés SHALL utiliser `make ci` comme commande d'entrée unique du pipeline, assurant la cohérence avec l'exécution locale.
+
+#### REQ-INIT-22
+Les workflows CI générés SHALL exécuter le pipeline sur une matrice de versions Python incluant la version cible du projet (`{{ python_version }}`) et Python 3.13.
+
+#### REQ-INIT-23
+Les workflows CI générés SHALL publier `work/report.md` en artefact à chaque exécution, que le pipeline réussisse ou échoue.
+
+#### REQ-INIT-24
+Le workflow GitHub Actions SHALL utiliser `astral-sh/setup-uv@v5` pour l'installation de `uv` et `actions/upload-artifact@v4` pour l'upload du rapport.
+
+#### REQ-INIT-25
+Le workflow GitLab CI SHALL utiliser `pip install uv` dans `before_script` et la directive `artifacts: when: always` pour conserver le rapport 30 jours.
+
 ### 3.2 `uvforge check`
 
 #### REQ-CHECK-01
@@ -213,6 +232,33 @@ Le nom du package Python SHALL être dérivé du `PROJECT_NAME` en remplaçant l
 
 #### REQ-CHECK-09
 Avec l'option `--fix`, `uvforge check` SHALL recopier les scripts manquants depuis les templates embarqués.
+
+### 3.2.1 Rapport de qualité automatique
+
+#### REQ-REPORT-01
+`scripts/check.sh` SHALL générer un rapport Markdown après chaque exécution du pipeline qualité, que toutes les vérifications aient réussi ou non.
+
+#### REQ-REPORT-02
+La localisation du rapport SHALL être contrôlée par la variable d'environnement `REPORT_OUTPUT`. En l'absence de cette variable, le rapport SHALL être écrit dans `work/report.md`.
+
+#### REQ-REPORT-03
+Le rapport SHALL contenir les sections suivantes :
+1. **Résumé** : nom du projet, version de uvforge, date de génération, nombre de vérifications passées/échouées.
+2. **Résultats des vérifications** : tableau avec statut PASS/FAIL, nom et détail de chaque étape du pipeline.
+3. **Checksums des fichiers** : tableau SHA-256 de chaque fichier source Python dans `src/`.
+4. **Suppressions de sécurité** : liste exhaustive des annotations `# noqa`, `# nosec`, `# type: ignore`, `# pragma: no cover` présentes dans le code, groupées par fichier.
+
+#### REQ-REPORT-04
+Le rapport SHALL être généré par le script `scripts/generate_report.py` appelé par `check.sh` via `uv run python scripts/generate_report.py --output "$REPORT_OUTPUT"`.
+
+#### REQ-REPORT-05
+`check.sh` SHALL écrire le code de sortie de chaque vérification dans `work/<nom>.exit` (valeur `0` ou `1`) avant d'appeler `generate_report.py`, afin que celui-ci puisse reconstruire les résultats sans exécuter à nouveau le pipeline.
+
+#### REQ-REPORT-06
+`check.sh` SHALL exclure `report.md` de son nettoyage final (`cleanup`) afin que le rapport subsiste après l'exécution.
+
+#### REQ-REPORT-07
+Si la génération du rapport échoue, `check.sh` SHALL afficher un avertissement mais ne SHALL pas modifier son code de sortie.
 
 ### 3.3 `uvforge update`
 
@@ -318,7 +364,33 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 #### REQ-SCR-06
 `check.sh` SHALL retourner un code de sortie égal au nombre de vérifications échouées.
 
-### 6.2 `scripts/check_docstrings.py`
+#### REQ-SCR-07
+`check.sh` SHALL écrire le code de sortie de chaque vérification dans un fichier sentinelle `work/<nom>.exit` (contenu : `0` si PASS, `1` si FAIL) pour permettre au rapport de reconstituer les résultats.
+
+#### REQ-SCR-08
+`check.sh` SHALL appeler `scripts/generate_report.py` en fin de pipeline et afficher l'emplacement du rapport généré.
+
+### 6.2 `scripts/generate_report.py`
+
+#### REQ-SCR-09
+`generate_report.py` SHALL être un script autonome (sans import de `uvforge`) afin de pouvoir fonctionner dans tout projet généré par uvforge, indépendamment de l'installation globale de l'outil.
+
+#### REQ-SCR-09a
+`generate_report.py` SHALL accepter l'option `--output <chemin>` pour contrôler l'emplacement du fichier Markdown généré.
+
+#### REQ-SCR-09b
+`generate_report.py` SHALL lire les fichiers `work/<nom>.exit` et `work/<nom>.log` pour reconstruire les résultats du pipeline sans ré-exécuter les vérifications.
+
+#### REQ-SCR-09c
+`generate_report.py` SHALL utiliser `mkforge` (PyPI) pour produire le rendu Markdown structuré avec table des matières, tableaux et sections.
+
+#### REQ-SCR-09d
+`generate_report.py` SHALL calculer le SHA-256 de chaque fichier Python dans `src/` et l'inclure dans la section checksums du rapport.
+
+#### REQ-SCR-09e
+`generate_report.py` SHALL scanner `src/`, `tests/` et `scripts/` à la recherche de toutes les annotations de suppression inline et les inclure dans la section sécurité du rapport.
+
+### 6.3 `scripts/check_docstrings.py`
 
 #### REQ-SCR-10
 `check_docstrings.py` SHALL analyser `src/`, `tests/` et `scripts/` via l'AST Python.
@@ -332,7 +404,7 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 #### REQ-SCR-13
 `check_docstrings.py` SHALL afficher les violations au format `path:line: name: message`.
 
-### 6.3 `scripts/code_metrics.py`
+### 6.4 `scripts/code_metrics.py`
 
 #### REQ-SCR-20
 `code_metrics.py` SHALL calculer la complexité cyclomatique de chaque fonction/méthode.
@@ -346,7 +418,7 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 #### REQ-SCR-23
 `code_metrics.py` SHALL retourner code 1 si un seuil est dépassé.
 
-### 6.4 `scripts/security_deps.sh`
+### 6.5 `scripts/security_deps.sh`
 
 #### REQ-SCR-30
 `security_deps.sh` SHALL exporter les dépendances runtime dans `work/requirements.txt`.
@@ -357,7 +429,7 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 #### REQ-SCR-32
 `security_deps.sh` SHALL exécuter `pip-audit --strict` sur les dépendances exportées.
 
-### 6.5 `scripts/publish.sh`
+### 6.6 `scripts/publish.sh`
 
 #### REQ-SCR-40
 `publish.sh` SHALL accepter un paramètre `ACTION` parmi : `build`, `check-dist`, `publish-test`, `publish`.
@@ -381,7 +453,10 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 ### 7.1 Tests unitaires des modules uvforge
 
 #### REQ-TEST-01
-Chaque module Python de uvforge (`scaffold.py`, `renderer.py`, `uv_runner.py`, `init.py`, `check.py`, `update.py`) SHALL avoir des tests unitaires couvrant 100% des branches.
+Chaque module Python de uvforge (`scaffold.py`, `renderer.py`, `uv_runner.py`, `init.py`, `check.py`, `update.py`, `suppressions.py`, `report.py`) SHALL avoir des tests unitaires couvrant 100% des branches.
+
+#### REQ-TEST-04
+La génération des fichiers CI SHALL être testée : présence de `.github/workflows/ci.yml` et `.gitlab-ci.yml` avec `make ci`, les deux versions Python, et leur absence quand `--no-git` est actif.
 
 #### REQ-TEST-02
 Les tests SHALL utiliser `tmp_path` (pytest) pour isoler les opérations sur le système de fichiers.
@@ -405,6 +480,12 @@ Les appels à `uv` (subprocess) SHALL être mockés dans les tests unitaires.
 
 #### REQ-TEST-13
 `security_deps.sh` SHALL être testé avec un projet sans dépendances runtime (exit 0 attendu).
+
+#### REQ-TEST-14
+`suppressions.py` SHALL être testé avec tous les types d'annotation (`noqa`, `nosec`, `type: ignore`, `pragma: no cover`), les cas de déduplication, les fichiers inaccessibles, et les chemins relatifs.
+
+#### REQ-TEST-15
+`report.py` SHALL être testé pour chaque chapitre du rapport, la génération de checksums SHA-256, le rendu complet, et l'écriture sur disque avec création des répertoires parents.
 
 ### 7.3 Tests d'intégration
 
@@ -432,3 +513,8 @@ La couverture globale de uvforge SHALL être ≥ 100% (branches incluses).
 | **template** | Fichier avec variables Jinja2 embarqué dans uvforge et rendu lors de l'init |
 | **uv** | Gestionnaire de packages et d'environnements Python développé par Astral |
 | **hatchling** | Backend de build Python moderne, utilisé par défaut avec uv |
+| **mkforge** | Bibliothèque PyPI fournissant un DSL Python pour la génération de Markdown structuré |
+| **suppression inline** | Annotation de commentaire (`# noqa`, `# nosec`, `# type: ignore`, `# pragma: no cover`) désactivant une règle de vérification sur une ligne de code |
+| **checksum** | Empreinte SHA-256 d'un fichier source permettant de détecter toute modification ultérieure |
+| **rapport de qualité** | Fichier Markdown généré automatiquement par `check.sh`, documentant les résultats du pipeline, les checksums et les suppressions |
+| **fichier sentinelle** | Fichier `work/<nom>.exit` contenant `0` (PASS) ou `1` (FAIL), écrit par `check.sh` pour chaque étape du pipeline |

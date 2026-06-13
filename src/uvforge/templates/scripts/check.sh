@@ -2,6 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-local}"
+REPORT_OUTPUT="${REPORT_OUTPUT:-work/report.md}"
 
 G='\033[32m'
 R='\033[31m'
@@ -15,7 +16,7 @@ FAILED_NAMES=()
 
 cleanup() {
     mkdir -p work
-    find work -mindepth 1 ! -name .gitkeep -exec rm -rf {} + 2>/dev/null || true
+    find work -mindepth 1 ! -name .gitkeep ! -name "report.md" -exec rm -rf {} + 2>/dev/null || true
 }
 
 count_matches() {
@@ -76,12 +77,15 @@ run() {
     local name="$1"
     shift
     local log="work/${name}.log"
+    local exit_file="work/${name}.exit"
     if "$@" > "$log" 2>&1; then
+        echo "0" > "$exit_file"
         local detail
         detail=$(detail_for "$name")
         printf "${G}✓ PASS${N}  %-20s  %s\n" "$name" "$detail"
         PASS=$((PASS + 1))
     else
+        echo "1" > "$exit_file"
         local detail
         detail=$(detail_for "$name")
         printf "${R}✗ FAIL${N}  %-20s  %s\n" "$name" "$detail"
@@ -130,6 +134,10 @@ printf "Result: ${G}%d passed${N}  ${R}%d failed${N}\n" "$PASS" "$FAIL"
 if [[ "${#FAILED_NAMES[@]}" -gt 0 ]]; then
     print_failures
 fi
+
+uv run python scripts/generate_report.py --output "$REPORT_OUTPUT" \
+    && printf "${B}Report:${N} %s\n" "$REPORT_OUTPUT" \
+    || printf "${R}Warning: report generation failed${N}\n"
 
 cleanup
 exit "$FAIL"

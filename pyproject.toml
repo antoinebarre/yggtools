@@ -13,6 +13,7 @@ authors = [{ name = "Antoine Barré" }]
 keywords = ["uv", "scaffold", "packaging", "ci", "quality", "automation"]
 dependencies = [
     "jinja2>=3.1",
+    "mkforge>=0.1",
     "rich>=13",
     "typer>=0.12",
 ]
@@ -26,9 +27,6 @@ uvforge = "uvforge.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/uvforge"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/uvforge/templates" = "uvforge/templates"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
