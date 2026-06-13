@@ -1,7 +1,7 @@
 # SRS — Software Requirements Specification
 
 **Projet :** uvforge  
-**Version :** 1.2  
+**Version :** 1.3  
 **Date :** 2026-06-13  
 **Auteur :** Antoine Barré  
 **Statut :** Draft
@@ -317,6 +317,29 @@ uvforge SHALL fonctionner sur macOS (≥ 13), Linux (Ubuntu ≥ 22.04), et Windo
 
 #### REQ-PORT-02
 Les scripts shell générés SHALL utiliser `#!/usr/bin/env bash` et fonctionner avec Bash ≥ 4.
+
+### 4.6 Intégration continue du projet uvforge lui-même
+
+#### REQ-DEVCI-01
+Le dépôt uvforge SHALL disposer d'un workflow GitHub Actions exécutant `make ci` sur chaque push et pull request vers `main` / `master`.
+
+#### REQ-DEVCI-02
+Le workflow CI de uvforge SHALL tester sur une matrice Python 3.12 et 3.13 avec `fail-fast: false`.
+
+#### REQ-DEVCI-03
+Le workflow CI SHALL uploader `work/report.md` comme artefact à chaque exécution, que le pipeline réussisse ou échoue.
+
+#### REQ-DEVCI-04
+Le dépôt uvforge SHALL disposer d'un workflow de publication qui se déclenche sur la création d'un tag `v*.*.*`.
+
+#### REQ-DEVCI-05
+Le workflow de publication SHALL exécuter `make ci` comme gate qualité avant tout build ou upload.
+
+#### REQ-DEVCI-06
+Le workflow de publication SHALL utiliser le mécanisme **Trusted Publishing (OIDC)** de PyPI via `pypa/gh-action-pypi-publish`, sans secret de token explicite dans le dépôt.
+
+#### REQ-DEVCI-07
+Le workflow de publication SHALL valider le package avec `twine check` avant l'upload.
 
 ---
 

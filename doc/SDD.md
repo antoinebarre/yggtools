@@ -1,7 +1,7 @@
 # SDD — Software Design Document
 
 **Projet :** uvforge  
-**Version :** 1.2  
+**Version :** 1.3  
 **Date :** 2026-06-13  
 **Auteur :** Antoine Barré  
 **Statut :** Draft
@@ -986,3 +986,59 @@ Contrairement aux scripts de qualité (copiés tels quels), les workflows CI doi
 ### 10.12 Pourquoi les workflows CI sont omis avec `--no-git`
 
 Les workflows GitHub Actions et GitLab CI n'ont de sens que dans un dépôt git avec un remote configuré. Générer ces fichiers sans dépôt git crée une confusion sans valeur ajoutée. L'option `--no-git` signale explicitement l'absence d'intention de versionnement — omettre les workflows CI est la conséquence logique.
+
+---
+
+## 11. CI du projet uvforge lui-même
+
+### 11.1 Fichiers
+
+| Fichier | Déclencheur | Rôle |
+|---|---|---|
+| `.github/workflows/ci.yml` | push / PR sur `main`, `master` | Pipeline qualité complet |
+| `.github/workflows/publish.yml` | tag `v*.*.*` | Gate qualité + build + publish PyPI |
+
+### 11.2 Workflow CI (`.github/workflows/ci.yml`)
+
+```
+trigger: push ou PR → main / master
+
+job: quality (matrix: 3.12, 3.13)
+  ├── actions/checkout@v4
+  ├── astral-sh/setup-uv@v5 (cache activé)
+  ├── uv python install <version>
+  ├── uv sync --python <version>
+  ├── make ci
+  └── actions/upload-artifact@v4  (work/report.md, if: always)
+```
+
+`fail-fast: false` garantit que les deux versions sont testées même si l'une échoue.
+
+### 11.3 Workflow de publication (`.github/workflows/publish.yml`)
+
+```
+trigger: push d'un tag v[0-9]+.[0-9]+.[0-9]*
+
+job: quality (Python 3.12)
+  └── make ci   ← gate bloquant
+
+job: publish (needs: quality)
+  permissions: id-token: write   ← OIDC pour PyPI Trusted Publishing
+  environment: pypi
+  ├── uv build --out-dir dist/
+  ├── uv run twine check dist/*
+  └── pypa/gh-action-pypi-publish@release/v1
+```
+
+### 11.4 Configuration PyPI Trusted Publishing requise
+
+Avant le premier déploiement, configurer sur pypi.org → Project → Publishing :
+
+| Champ | Valeur |
+|---|---|
+| Owner | `antoinebarre` |
+| Repository | `uvforge` |
+| Workflow filename | `publish.yml` |
+| Environment | `pypi` |
+
+Aucun secret `PYPI_TOKEN` n'est nécessaire dans le dépôt GitHub. Le token est émis automatiquement par GitHub via OIDC lors de l'exécution du workflow.
