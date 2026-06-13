@@ -1,0 +1,57 @@
+PYTHON_FILES := src tests scripts
+
+.PHONY: format format-check lint flake8 docstrings typecheck metrics \
+        security test check ci clean clean-work \
+        build check-dist publish-test publish
+
+clean-work:
+	mkdir -p work
+	find work -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
+
+clean: clean-work
+
+format: clean-work
+	uv run ruff format $(PYTHON_FILES)
+
+format-check: clean-work
+	uv run ruff format --check $(PYTHON_FILES)
+
+lint: clean-work
+	uv run ruff check $(PYTHON_FILES)
+
+flake8: clean-work
+	uv run flake8 $(PYTHON_FILES)
+
+docstrings: clean-work
+	uv run python scripts/check_docstrings.py
+
+typecheck: clean-work
+	uv run mypy src tests scripts
+
+metrics: clean-work
+	uv run python scripts/code_metrics.py
+
+security: clean-work
+	uv run bandit -r src -x tests,work -q
+	bash scripts/security_deps.sh
+
+test: clean-work
+	uv run pytest
+
+check: clean-work
+	bash scripts/check.sh
+
+ci: clean-work
+	bash scripts/check.sh --ci
+
+build: clean-work
+	bash scripts/publish.sh build
+
+check-dist: clean-work
+	bash scripts/publish.sh check-dist
+
+publish-test: clean-work
+	bash scripts/publish.sh publish-test
+
+publish: clean-work
+	bash scripts/publish.sh publish

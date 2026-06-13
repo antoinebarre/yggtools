@@ -1,0 +1,43 @@
+# work/ — temporary outputs (coverage, caches, build artifacts)
+work/*
+!work/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+wheels/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Ruff
+.ruff_cache/
+
+# Distribution
+*.whl
+*.tar.gz
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
