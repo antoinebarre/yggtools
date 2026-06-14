@@ -1,1 +1,1 @@
-"""Integration tests for uvforge end-to-end workflows."""
+"""Integration tests for yggtools end-to-end workflows."""

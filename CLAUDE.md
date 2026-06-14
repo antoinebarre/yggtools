@@ -41,7 +41,7 @@ These instructions apply to the whole repository.
   unless there is a clear technical need that cannot reasonably be met with the
   standard library.
 - Explain the reason for any new dependency before adding it.
-- Allowed external dependencies for uvforge itself: `typer`, `rich`, `jinja2`.
+- Allowed external dependencies for yggtools itself: `typer`, `rich`, `jinja2`.
   These are justified because: `typer` provides typed CLI generation that cannot
   be replicated cleanly with `argparse`; `rich` provides the terminal formatting
   expected by the tool's UX; `jinja2` provides template rendering with
@@ -87,12 +87,12 @@ These instructions apply to the whole repository.
 
 ## Project Structure
 
-- Source code lives in `src/uvforge/`.
+- Source code lives in `src/yggtools/`.
 - Tests live in `tests/`.
 - Scripts (quality pipeline) live in `scripts/`.
 - Temporary outputs (coverage, caches, build artifacts) go into `work/`.
 - Embedded templates and scripts for project scaffolding live in
-  `src/uvforge/templates/`.
+  `src/yggtools/templates/`.
 
 ## Quality Checks
 

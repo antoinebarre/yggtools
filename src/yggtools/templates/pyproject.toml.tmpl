@@ -53,7 +53,7 @@ statistics = true
 [tool.bandit]
 exclude_dirs = ["tests", "work", ".venv"]
 
-[tool.uvforge.code_metrics]
+[tool.yggtools.code_metrics]
 paths = ["src/{{ package_name }}", "tests"]
 exclude = []
 max_cyclomatic_complexity = 10

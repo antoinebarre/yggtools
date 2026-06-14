@@ -1,4 +1,4 @@
-"""Unit tests for uvforge.init."""
+"""Unit tests for yggtools.init."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from uvforge.init import (
+from yggtools.init import (
     ConflictError,
     _copy_scripts,
     _write_ci_files,
     run_init,
 )
-from uvforge.models import ProjectContext
-from uvforge.uv_runner import UvNotFoundError
+from yggtools.models import ProjectContext
+from yggtools.uv_runner import UvNotFoundError
 
 
 def _ctx(
@@ -47,7 +47,7 @@ def _ctx(
 
 
 def _patch_uv_runner() -> MagicMock:
-    """Return a MagicMock that patches uv_runner calls in uvforge.init.
+    """Return a MagicMock that patches uv_runner calls in yggtools.init.
 
     Returns:
         MagicMock context that can be used as a patch target string.
@@ -60,7 +60,7 @@ def test_run_init_raises_when_uv_missing(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     with (
         patch(
-            "uvforge.init.check_uv_available",
+            "yggtools.init.check_uv_available",
             side_effect=UvNotFoundError("no uv"),
         ),
         pytest.raises(UvNotFoundError),
@@ -76,7 +76,7 @@ def test_run_init_raises_conflict_when_pyproject_exists(
     ctx.project_dir.mkdir(parents=True)
     (ctx.project_dir / "pyproject.toml").write_text("[project]\nname='x'\n")
     with (
-        patch("uvforge.init.check_uv_available"),
+        patch("yggtools.init.check_uv_available"),
         pytest.raises(ConflictError),
     ):
         run_init(ctx)
@@ -88,9 +88,9 @@ def test_run_init_force_overwrites_existing_project(tmp_path: Path) -> None:
     ctx.project_dir.mkdir(parents=True)
     (ctx.project_dir / "pyproject.toml").write_text("[project]\nname='x'\n")
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     assert (ctx.project_dir / "Makefile").exists()
@@ -99,7 +99,7 @@ def test_run_init_force_overwrites_existing_project(tmp_path: Path) -> None:
 def test_run_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     """Requirement: run_init with dry_run=True must not write to disk."""
     ctx = _ctx(tmp_path, dry_run=True)
-    with patch("uvforge.init.check_uv_available"):
+    with patch("yggtools.init.check_uv_available"):
         run_init(ctx)
     assert not ctx.project_dir.exists()
 
@@ -108,9 +108,9 @@ def test_run_init_creates_project_structure(tmp_path: Path) -> None:
     """Requirement: run_init must create the full project structure."""
     ctx = _ctx(tmp_path)
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     assert (ctx.project_dir / "src" / "my_lib").is_dir()
@@ -123,9 +123,9 @@ def test_run_init_writes_pyproject_toml(tmp_path: Path) -> None:
     """Requirement: run_init must write a rendered pyproject.toml."""
     ctx = _ctx(tmp_path)
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     pyproject = ctx.project_dir / "pyproject.toml"
@@ -137,9 +137,9 @@ def test_run_init_writes_makefile(tmp_path: Path) -> None:
     """Requirement: run_init must write a Makefile with pipeline targets."""
     ctx = _ctx(tmp_path)
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     makefile = ctx.project_dir / "Makefile"
@@ -151,9 +151,9 @@ def test_run_init_copies_all_scripts(tmp_path: Path) -> None:
     """Requirement: run_init must copy all embedded scripts into scripts/."""
     ctx = _ctx(tmp_path)
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     scripts_dir = ctx.project_dir / "scripts"
@@ -168,9 +168,9 @@ def test_run_init_writes_python_version_file(tmp_path: Path) -> None:
     """Requirement: run_init must write .python-version with target version."""
     ctx = _ctx(tmp_path)
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     version_file = ctx.project_dir / ".python-version"
@@ -203,12 +203,12 @@ def test_run_init_calls_git_when_no_git_false(tmp_path: Path) -> None:
         no_git=False,
     )
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
-        patch("uvforge.init.git_init") as mock_git_init,
-        patch("uvforge.init.git_add_all") as mock_git_add,
-        patch("uvforge.init.git_commit") as mock_git_commit,
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
+        patch("yggtools.init.git_init") as mock_git_init,
+        patch("yggtools.init.git_add_all") as mock_git_add,
+        patch("yggtools.init.git_commit") as mock_git_commit,
     ):
         run_init(ctx)
     mock_git_init.assert_called_once()
@@ -226,12 +226,12 @@ def test_run_init_writes_github_actions_workflow(tmp_path: Path) -> None:
         no_git=False,
     )
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
-        patch("uvforge.init.git_init"),
-        patch("uvforge.init.git_add_all"),
-        patch("uvforge.init.git_commit"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
+        patch("yggtools.init.git_init"),
+        patch("yggtools.init.git_add_all"),
+        patch("yggtools.init.git_commit"),
     ):
         run_init(ctx)
     workflow = ctx.project_dir / ".github" / "workflows" / "ci.yml"
@@ -252,12 +252,12 @@ def test_run_init_writes_gitlab_ci(tmp_path: Path) -> None:
         no_git=False,
     )
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
-        patch("uvforge.init.git_init"),
-        patch("uvforge.init.git_add_all"),
-        patch("uvforge.init.git_commit"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
+        patch("yggtools.init.git_init"),
+        patch("yggtools.init.git_add_all"),
+        patch("yggtools.init.git_commit"),
     ):
         run_init(ctx)
     gitlab_ci = ctx.project_dir / ".gitlab-ci.yml"
@@ -272,9 +272,9 @@ def test_run_init_no_ci_files_when_no_git(tmp_path: Path) -> None:
     """Requirement: run_init must not write CI files when no_git=True."""
     ctx = _ctx(tmp_path, no_git=True)
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
     assert not (ctx.project_dir / ".github").exists()
@@ -309,7 +309,7 @@ def test_run_init_dry_run_lists_ci_files_for_git_project(
         dry_run=True,
         no_git=False,
     )
-    with patch("uvforge.init.check_uv_available"):
+    with patch("yggtools.init.check_uv_available"):
         run_init(ctx)
     captured = capsys.readouterr()
     assert ".github/workflows/ci.yml" in captured.out
@@ -322,7 +322,7 @@ def test_run_init_dry_run_omits_ci_files_when_no_git(
 ) -> None:
     """Requirement: dry-run output omits CI files when no_git=True."""
     ctx = _ctx(tmp_path, dry_run=True, no_git=True)
-    with patch("uvforge.init.check_uv_available"):
+    with patch("yggtools.init.check_uv_available"):
         run_init(ctx)
     captured = capsys.readouterr()
     assert ".github/workflows/ci.yml" not in captured.out

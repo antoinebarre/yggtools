@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the uvforge test suite."""
+"""Shared pytest fixtures for the yggtools test suite."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from uvforge.models import ProjectContext
-from uvforge.renderer import (
+from yggtools.models import ProjectContext
+from yggtools.renderer import (
     embedded_script_path,
     list_embedded_scripts,
     render_template,
 )
-from uvforge.scaffold import copy_script, scaffold_project, write_file
+from yggtools.scaffold import copy_script, scaffold_project, write_file
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def project_ctx(tmp_path: Path) -> ProjectContext:
 
 @pytest.fixture
 def scaffolded_project(tmp_path: Path) -> Path:
-    """Return a directory containing the minimal expected uvforge structure.
+    """Return a directory containing the minimal expected yggtools structure.
 
     Creates directories and stub files that a freshly initialised project
     would contain, without running the full init workflow.

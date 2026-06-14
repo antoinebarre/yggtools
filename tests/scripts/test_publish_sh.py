@@ -8,7 +8,7 @@ from pathlib import Path
 _SCRIPT = (
     Path(__file__).parent.parent.parent
     / "src"
-    / "uvforge"
+    / "yggtools"
     / "templates"
     / "scripts"
     / "publish.sh"

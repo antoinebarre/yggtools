@@ -1390,7 +1390,7 @@ wheels = [
 ]
 
 [[package]]
-name = "uvforge"
+name = "yggtools"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

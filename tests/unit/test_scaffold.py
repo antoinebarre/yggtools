@@ -1,12 +1,12 @@
-"""Unit tests for uvforge.scaffold."""
+"""Unit tests for yggtools.scaffold."""
 
 from __future__ import annotations
 
 import stat
 from pathlib import Path
 
-from uvforge.models import ProjectContext
-from uvforge.scaffold import copy_script, scaffold_project, write_file
+from yggtools.models import ProjectContext
+from yggtools.scaffold import copy_script, scaffold_project, write_file
 
 
 def _ctx(tmp_path: Path, *, dry_run: bool = False) -> ProjectContext:

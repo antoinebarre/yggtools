@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from uvforge.models import SuppressionItem
+from yggtools.models import SuppressionItem
 
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("noqa", re.compile(r"#\s*noqa:\s*([A-Z0-9,\s]+)", re.IGNORECASE)),

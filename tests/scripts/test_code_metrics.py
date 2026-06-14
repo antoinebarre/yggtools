@@ -9,14 +9,14 @@ from pathlib import Path
 _SCRIPT = (
     Path(__file__).parent.parent.parent
     / "src"
-    / "uvforge"
+    / "yggtools"
     / "templates"
     / "scripts"
     / "code_metrics.py"
 )
 
 _PYPROJECT_TEMPLATE = """\
-[tool.uvforge.code_metrics]
+[tool.yggtools.code_metrics]
 paths = ["{path}"]
 exclude = []
 max_cyclomatic_complexity = {max_cc}

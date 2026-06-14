@@ -1,11 +1,11 @@
-"""Unit tests for uvforge.check."""
+"""Unit tests for yggtools.check."""
 
 from __future__ import annotations
 
 import stat
 from pathlib import Path
 
-from uvforge.check import run_check
+from yggtools.check import run_check
 
 
 def _make_minimal_project(base: Path) -> Path:

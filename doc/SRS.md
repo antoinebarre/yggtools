@@ -1,6 +1,6 @@
 # SRS — Software Requirements Specification
 
-**Projet :** uvforge  
+**Projet :** yggtools  
 **Version :** 1.3  
 **Date :** 2026-06-13  
 **Auteur :** Antoine Barré  
@@ -25,18 +25,18 @@
 
 ### 1.1 Objet
 
-Ce document spécifie les exigences logicielles du projet **uvforge**, un outil en ligne de commande qui étend `uv` pour fournir une couche d'organisation, de scripts de qualité et de pipeline CI reproductible pour les packages Python.
+Ce document spécifie les exigences logicielles du projet **yggtools**, un outil en ligne de commande qui étend `uv` pour fournir une couche d'organisation, de scripts de qualité et de pipeline CI reproductible pour les packages Python.
 
 ### 1.2 Périmètre
 
-uvforge couvre :
-- L'initialisation de la structure d'un package Python (`uvforge init`)
-- L'audit de conformité d'un projet existant (`uvforge check`)
-- La mise à jour des fichiers gérés (`uvforge update`)
+yggtools couvre :
+- L'initialisation de la structure d'un package Python (`yggtools init`)
+- L'audit de conformité d'un projet existant (`yggtools check`)
+- La mise à jour des fichiers gérés (`yggtools update`)
 - La génération d'un pipeline qualité complet via `Makefile`
 - La fourniture de scripts de qualité, métriques, sécurité et publication
 
-uvforge ne couvre pas :
+yggtools ne couvre pas :
 - L'exécution directe des outils qualité (ruff, mypy, pytest…) — ceux-ci sont délégués au `Makefile` et aux scripts
 - La gestion des secrets PyPI (responsabilité de l'utilisateur)
 - La création de branches git ou la gestion de workflows GitHub/GitLab
@@ -60,17 +60,17 @@ uvforge ne couvre pas :
 
 ### 2.1 Perspective produit
 
-uvforge est un outil de développeur (`dev tool`) destiné à être installé globalement via `uv tool install uvforge`. Il n'est jamais ajouté comme dépendance d'un projet cible.
+yggtools est un outil de développeur (`dev tool`) destiné à être installé globalement via `uv tool install yggtools`. Il n'est jamais ajouté comme dépendance d'un projet cible.
 
 ```
 ┌──────────────────────────────────────────────┐
 │  Développeur                                  │
 │                                               │
-│  $ uvforge init mylib                         │
+│  $ yggtools init mylib                         │
 │         │                                     │
 │         ▼                                     │
 │  ┌─────────────┐    génère    ┌────────────┐  │
-│  │  uvforge    │ ──────────►  │  mylib/    │  │
+│  │  yggtools    │ ──────────►  │  mylib/    │  │
 │  │  (global)   │              │  Makefile  │  │
 │  └─────────────┘              │  scripts/  │  │
 │         │                     │  src/      │  │
@@ -111,13 +111,13 @@ Développeur Python intermédiaire à expert, familier avec `uv`, les outils de 
 
 ## 3. Exigences fonctionnelles
 
-### 3.1 `uvforge init`
+### 3.1 `yggtools init`
 
 #### REQ-INIT-01
-uvforge SHALL accepter un argument optionnel `PROJECT_NAME`. Si absent, le nom est déduit du nom du répertoire courant.
+yggtools SHALL accepter un argument optionnel `PROJECT_NAME`. Si absent, le nom est déduit du nom du répertoire courant.
 
 #### REQ-INIT-02
-uvforge SHALL créer les répertoires suivants dans le projet cible :
+yggtools SHALL créer les répertoires suivants dans le projet cible :
 - `src/<package_name>/`
 - `tests/`
 - `scripts/`
@@ -125,13 +125,13 @@ uvforge SHALL créer les répertoires suivants dans le projet cible :
 - `doc/`
 
 #### REQ-INIT-03
-uvforge SHALL créer un fichier `work/.gitkeep` pour que le dossier `work/` soit tracké par git mais ignoré dans son contenu.
+yggtools SHALL créer un fichier `work/.gitkeep` pour que le dossier `work/` soit tracké par git mais ignoré dans son contenu.
 
 #### REQ-INIT-04
-uvforge SHALL créer un `.gitignore` excluant au minimum : `work/*`, `!work/.gitkeep`, `__pycache__/`, `.mypy_cache/`, `dist/`, `*.egg-info/`, `.coverage`, `.env`.
+yggtools SHALL créer un `.gitignore` excluant au minimum : `work/*`, `!work/.gitkeep`, `__pycache__/`, `.mypy_cache/`, `dist/`, `*.egg-info/`, `.coverage`, `.env`.
 
 #### REQ-INIT-05
-uvforge SHALL générer un `pyproject.toml` contenant :
+yggtools SHALL générer un `pyproject.toml` contenant :
 - Métadonnées projet (`name`, `version`, `description`, `requires-python`)
 - Build system `hatchling`
 - Groupe de dépendances `dev` avec : ruff, flake8, mypy, pytest, pytest-cov, bandit, pip-audit, twine
@@ -144,50 +144,50 @@ uvforge SHALL générer un `pyproject.toml` contenant :
 - Configuration des seuils de métriques (complexity=10, logical_lines=900)
 
 #### REQ-INIT-06
-uvforge SHALL générer un `Makefile` avec les cibles : `format`, `format-check`, `lint`, `flake8`, `docstrings`, `typecheck`, `metrics`, `security`, `test`, `check`, `ci`, `clean`, `clean-work`, `build`, `check-dist`, `publish-test`, `publish`.
+yggtools SHALL générer un `Makefile` avec les cibles : `format`, `format-check`, `lint`, `flake8`, `docstrings`, `typecheck`, `metrics`, `security`, `test`, `check`, `ci`, `clean`, `clean-work`, `build`, `check-dist`, `publish-test`, `publish`.
 
 #### REQ-INIT-07
-uvforge SHALL copier les cinq scripts suivants dans `scripts/` :
+yggtools SHALL copier les cinq scripts suivants dans `scripts/` :
 `check.sh`, `check_docstrings.py`, `code_metrics.py`, `security_deps.sh`, `publish.sh`.
 
 #### REQ-INIT-08
-uvforge SHALL créer un `scripts/__init__.py` vide pour que mypy puisse analyser le répertoire.
+yggtools SHALL créer un `scripts/__init__.py` vide pour que mypy puisse analyser le répertoire.
 
 #### REQ-INIT-09
-uvforge SHALL créer `src/<package_name>/__init__.py` et `src/<package_name>/py.typed`.
+yggtools SHALL créer `src/<package_name>/__init__.py` et `src/<package_name>/py.typed`.
 
 #### REQ-INIT-10
-uvforge SHALL créer `tests/__init__.py` et `tests/test_<package_name>.py` avec un test de smoke minimal.
+yggtools SHALL créer `tests/__init__.py` et `tests/test_<package_name>.py` avec un test de smoke minimal.
 
 #### REQ-INIT-11
-uvforge SHALL créer un `README.md` minimal avec le nom du projet.
+yggtools SHALL créer un `README.md` minimal avec le nom du projet.
 
 #### REQ-INIT-12
-uvforge SHALL créer un `.python-version` contenant la version Python cible.
+yggtools SHALL créer un `.python-version` contenant la version Python cible.
 
 #### REQ-INIT-13
-uvforge SHALL appeler `uv add --group dev` pour installer les dépendances dev.
+yggtools SHALL appeler `uv add --group dev` pour installer les dépendances dev.
 
 #### REQ-INIT-14
-uvforge SHALL appeler `uv sync` après avoir configuré les dépendances.
+yggtools SHALL appeler `uv sync` après avoir configuré les dépendances.
 
 #### REQ-INIT-15
-uvforge SHALL, sauf `--no-git`, initialiser un dépôt git et créer un commit initial.
+yggtools SHALL, sauf `--no-git`, initialiser un dépôt git et créer un commit initial.
 
 #### REQ-INIT-16
-uvforge SHALL refuser d'écraser un projet existant (présence de `pyproject.toml`) sans l'option `--force`.
+yggtools SHALL refuser d'écraser un projet existant (présence de `pyproject.toml`) sans l'option `--force`.
 
 #### REQ-INIT-17
-uvforge SHALL afficher un résumé des actions effectuées et les prochaines étapes à l'issue de l'initialisation.
+yggtools SHALL afficher un résumé des actions effectuées et les prochaines étapes à l'issue de l'initialisation.
 
 #### REQ-INIT-18
-uvforge SHALL supporter l'option `--dry-run` qui affiche la liste des fichiers qui seraient créés sans effectuer aucune action.
+yggtools SHALL supporter l'option `--dry-run` qui affiche la liste des fichiers qui seraient créés sans effectuer aucune action.
 
 #### REQ-INIT-19
 Le nom du package Python SHALL être dérivé du `PROJECT_NAME` en remplaçant les `-` par `_` et en passant en minuscules.
 
 #### REQ-INIT-20
-uvforge SHALL générer `.github/workflows/ci.yml` (GitHub Actions) et `.gitlab-ci.yml` (GitLab CI) sauf si `--no-git` est spécifié.
+yggtools SHALL générer `.github/workflows/ci.yml` (GitHub Actions) et `.gitlab-ci.yml` (GitLab CI) sauf si `--no-git` est spécifié.
 
 #### REQ-INIT-21
 Les workflows CI générés SHALL utiliser `make ci` comme commande d'entrée unique du pipeline, assurant la cohérence avec l'exécution locale.
@@ -204,34 +204,34 @@ Le workflow GitHub Actions SHALL utiliser `astral-sh/setup-uv@v5` pour l'install
 #### REQ-INIT-25
 Le workflow GitLab CI SHALL utiliser `pip install uv` dans `before_script` et la directive `artifacts: when: always` pour conserver le rapport 30 jours.
 
-### 3.2 `uvforge check`
+### 3.2 `yggtools check`
 
 #### REQ-CHECK-01
-`uvforge check` SHALL vérifier la présence de chaque répertoire requis (`src/`, `tests/`, `scripts/`, `work/`, `doc/`).
+`yggtools check` SHALL vérifier la présence de chaque répertoire requis (`src/`, `tests/`, `scripts/`, `work/`, `doc/`).
 
 #### REQ-CHECK-02
-`uvforge check` SHALL vérifier la présence et l'exécutabilité de `scripts/check.sh`.
+`yggtools check` SHALL vérifier la présence et l'exécutabilité de `scripts/check.sh`.
 
 #### REQ-CHECK-03
-`uvforge check` SHALL vérifier la présence de chaque script : `check_docstrings.py`, `code_metrics.py`, `security_deps.sh`, `publish.sh`.
+`yggtools check` SHALL vérifier la présence de chaque script : `check_docstrings.py`, `code_metrics.py`, `security_deps.sh`, `publish.sh`.
 
 #### REQ-CHECK-04
-`uvforge check` SHALL vérifier que le `Makefile` contient les cibles obligatoires : `check`, `ci`, `test`, `lint`, `typecheck`, `build`, `publish`.
+`yggtools check` SHALL vérifier que le `Makefile` contient les cibles obligatoires : `check`, `ci`, `test`, `lint`, `typecheck`, `build`, `publish`.
 
 #### REQ-CHECK-05
-`uvforge check` SHALL vérifier que `pyproject.toml` contient un groupe `dev` avec les outils requis.
+`yggtools check` SHALL vérifier que `pyproject.toml` contient un groupe `dev` avec les outils requis.
 
 #### REQ-CHECK-06
-`uvforge check` SHALL vérifier la présence de `.python-version`.
+`yggtools check` SHALL vérifier la présence de `.python-version`.
 
 #### REQ-CHECK-07
-`uvforge check` SHALL vérifier que `work/.gitkeep` est présent.
+`yggtools check` SHALL vérifier que `work/.gitkeep` est présent.
 
 #### REQ-CHECK-08
-`uvforge check` SHALL afficher un rapport PASS/FAIL par item avec un code de sortie 0 (tout OK) ou 1 (au moins un FAIL).
+`yggtools check` SHALL afficher un rapport PASS/FAIL par item avec un code de sortie 0 (tout OK) ou 1 (au moins un FAIL).
 
 #### REQ-CHECK-09
-Avec l'option `--fix`, `uvforge check` SHALL recopier les scripts manquants depuis les templates embarqués.
+Avec l'option `--fix`, `yggtools check` SHALL recopier les scripts manquants depuis les templates embarqués.
 
 ### 3.2.1 Rapport de qualité automatique
 
@@ -243,7 +243,7 @@ La localisation du rapport SHALL être contrôlée par la variable d'environneme
 
 #### REQ-REPORT-03
 Le rapport SHALL contenir les sections suivantes :
-1. **Résumé** : nom du projet, version de uvforge, date de génération, nombre de vérifications passées/échouées.
+1. **Résumé** : nom du projet, version de yggtools, date de génération, nombre de vérifications passées/échouées.
 2. **Résultats des vérifications** : tableau avec statut PASS/FAIL, nom et détail de chaque étape du pipeline.
 3. **Checksums des fichiers** : tableau SHA-256 de chaque fichier source Python dans `src/`.
 4. **Suppressions de sécurité** : liste exhaustive des annotations `# noqa`, `# nosec`, `# type: ignore`, `# pragma: no cover` présentes dans le code, groupées par fichier.
@@ -260,16 +260,16 @@ Le rapport SHALL être généré par le script `scripts/generate_report.py` appe
 #### REQ-REPORT-07
 Si la génération du rapport échoue, `check.sh` SHALL afficher un avertissement mais ne SHALL pas modifier son code de sortie.
 
-### 3.3 `uvforge update`
+### 3.3 `yggtools update`
 
 #### REQ-UPDATE-01
-`uvforge update` SHALL comparer chaque fichier géré (scripts, Makefile) avec la version embarquée dans uvforge.
+`yggtools update` SHALL comparer chaque fichier géré (scripts, Makefile) avec la version embarquée dans yggtools.
 
 #### REQ-UPDATE-02
-Pour chaque fichier différent, `uvforge update` SHALL afficher un diff et proposer : remplacer / conserver / ignorer.
+Pour chaque fichier différent, `yggtools update` SHALL afficher un diff et proposer : remplacer / conserver / ignorer.
 
 #### REQ-UPDATE-03
-Avec l'option `--deps`, `uvforge update` SHALL mettre à jour les versions minimales des dépendances dev dans `pyproject.toml`.
+Avec l'option `--deps`, `yggtools update` SHALL mettre à jour les versions minimales des dépendances dev dans `pyproject.toml`.
 
 ---
 
@@ -278,15 +278,15 @@ Avec l'option `--deps`, `uvforge update` SHALL mettre à jour les versions minim
 ### 4.1 Performance
 
 #### REQ-PERF-01
-`uvforge init` SHALL se terminer en moins de 60 secondes sur une connexion internet standard (hors temps de téléchargement des dépendances pip par uv).
+`yggtools init` SHALL se terminer en moins de 60 secondes sur une connexion internet standard (hors temps de téléchargement des dépendances pip par uv).
 
 #### REQ-PERF-02
-`uvforge check` SHALL se terminer en moins de 2 secondes.
+`yggtools check` SHALL se terminer en moins de 2 secondes.
 
 ### 4.2 Fiabilité
 
 #### REQ-REL-01
-En cas d'échec partiel de `uvforge init` (ex. uv non disponible), uvforge SHALL afficher un message d'erreur clair indiquant la cause et SHALL ne pas laisser de répertoire partiellement créé.
+En cas d'échec partiel de `yggtools init` (ex. uv non disponible), yggtools SHALL afficher un message d'erreur clair indiquant la cause et SHALL ne pas laisser de répertoire partiellement créé.
 
 #### REQ-REL-02
 `scripts/publish.sh` SHALL garantir la suppression de `work/dist/` en toutes circonstances (trap EXIT).
@@ -297,40 +297,40 @@ En cas d'échec partiel de `uvforge init` (ex. uv non disponible), uvforge SHALL
 Toute sortie terminal SHALL utiliser des couleurs pour distinguer succès (vert), avertissement (jaune) et erreur (rouge).
 
 #### REQ-USE-02
-`uvforge --help` et `uvforge <command> --help` SHALL afficher une aide claire avec la liste des options.
+`yggtools --help` et `yggtools <command> --help` SHALL afficher une aide claire avec la liste des options.
 
 #### REQ-USE-03
-uvforge SHALL fournir une autocomplétion shell (bash, zsh, fish) via `uvforge --install-completion`.
+yggtools SHALL fournir une autocomplétion shell (bash, zsh, fish) via `yggtools --install-completion`.
 
 ### 4.4 Maintenabilité
 
 #### REQ-MAIN-01
-Le code de uvforge SHALL respecter les mêmes standards qualité que ceux qu'il impose aux projets cibles (ruff, mypy strict, couverture 100%).
+Le code de yggtools SHALL respecter les mêmes standards qualité que ceux qu'il impose aux projets cibles (ruff, mypy strict, couverture 100%).
 
 #### REQ-MAIN-02
-Chaque module Python de uvforge SHALL avoir une couverture de tests ≥ 100%.
+Chaque module Python de yggtools SHALL avoir une couverture de tests ≥ 100%.
 
 ### 4.5 Portabilité
 
 #### REQ-PORT-01
-uvforge SHALL fonctionner sur macOS (≥ 13), Linux (Ubuntu ≥ 22.04), et Windows via WSL2.
+yggtools SHALL fonctionner sur macOS (≥ 13), Linux (Ubuntu ≥ 22.04), et Windows via WSL2.
 
 #### REQ-PORT-02
 Les scripts shell générés SHALL utiliser `#!/usr/bin/env bash` et fonctionner avec Bash ≥ 4.
 
-### 4.6 Intégration continue du projet uvforge lui-même
+### 4.6 Intégration continue du projet yggtools lui-même
 
 #### REQ-DEVCI-01
-Le dépôt uvforge SHALL disposer d'un workflow GitHub Actions exécutant `make ci` sur chaque push et pull request vers `main` / `master`.
+Le dépôt yggtools SHALL disposer d'un workflow GitHub Actions exécutant `make ci` sur chaque push et pull request vers `main` / `master`.
 
 #### REQ-DEVCI-02
-Le workflow CI de uvforge SHALL tester sur une matrice Python 3.12 et 3.13 avec `fail-fast: false`.
+Le workflow CI de yggtools SHALL tester sur une matrice Python 3.12 et 3.13 avec `fail-fast: false`.
 
 #### REQ-DEVCI-03
 Le workflow CI SHALL uploader `work/report.md` comme artefact à chaque exécution, que le pipeline réussisse ou échoue.
 
 #### REQ-DEVCI-04
-Le dépôt uvforge SHALL disposer d'un workflow de publication qui se déclenche sur la création d'un tag `v*.*.*`.
+Le dépôt yggtools SHALL disposer d'un workflow de publication qui se déclenche sur la création d'un tag `v*.*.*`.
 
 #### REQ-DEVCI-05
 Le workflow de publication SHALL exécuter `make ci` comme gate qualité avant tout build ou upload.
@@ -356,11 +356,11 @@ Le workflow de publication SHALL valider le package avec `twine check` avant l'u
 
 ### 5.2 Installation
 
-uvforge SHALL s'installer via `uv tool install uvforge` sans nécessiter de droits administrateurs.
+yggtools SHALL s'installer via `uv tool install yggtools` sans nécessiter de droits administrateurs.
 
 ### 5.3 Absence de dépendances runtime dans les projets cibles
 
-uvforge NE SHALL PAS apparaître dans `dependencies` (ni dans `dev`) d'un projet qu'il a initialisé.
+yggtools NE SHALL PAS apparaître dans `dependencies` (ni dans `dev`) d'un projet qu'il a initialisé.
 
 ---
 
@@ -396,7 +396,7 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 ### 6.2 `scripts/generate_report.py`
 
 #### REQ-SCR-09
-`generate_report.py` SHALL être un script autonome (sans import de `uvforge`) afin de pouvoir fonctionner dans tout projet généré par uvforge, indépendamment de l'installation globale de l'outil.
+`generate_report.py` SHALL être un script autonome (sans import de `yggtools`) afin de pouvoir fonctionner dans tout projet généré par yggtools, indépendamment de l'installation globale de l'outil.
 
 #### REQ-SCR-09a
 `generate_report.py` SHALL accepter l'option `--output <chemin>` pour contrôler l'emplacement du fichier Markdown généré.
@@ -473,10 +473,10 @@ format → lint (ruff) → flake8 → docstrings → typecheck → metrics → s
 
 ## 7. Exigences de test
 
-### 7.1 Tests unitaires des modules uvforge
+### 7.1 Tests unitaires des modules yggtools
 
 #### REQ-TEST-01
-Chaque module Python de uvforge (`scaffold.py`, `renderer.py`, `uv_runner.py`, `init.py`, `check.py`, `update.py`, `suppressions.py`, `report.py`) SHALL avoir des tests unitaires couvrant 100% des branches.
+Chaque module Python de yggtools (`scaffold.py`, `renderer.py`, `uv_runner.py`, `init.py`, `check.py`, `update.py`, `suppressions.py`, `report.py`) SHALL avoir des tests unitaires couvrant 100% des branches.
 
 #### REQ-TEST-04
 La génération des fichiers CI SHALL être testée : présence de `.github/workflows/ci.yml` et `.gitlab-ci.yml` avec `make ci`, les deux versions Python, et leur absence quand `--no-git` est actif.
@@ -513,15 +513,15 @@ Les appels à `uv` (subprocess) SHALL être mockés dans les tests unitaires.
 ### 7.3 Tests d'intégration
 
 #### REQ-TEST-20
-Un test d'intégration SHALL exécuter `uvforge init` dans un `tmp_path`, puis vérifier que `make check` retourne 0.
+Un test d'intégration SHALL exécuter `yggtools init` dans un `tmp_path`, puis vérifier que `make check` retourne 0.
 
 #### REQ-TEST-21
-Un test d'intégration SHALL vérifier que `uvforge check` retourne 0 sur un projet fraîchement initialisé.
+Un test d'intégration SHALL vérifier que `yggtools check` retourne 0 sur un projet fraîchement initialisé.
 
 ### 7.4 Couverture
 
 #### REQ-TEST-30
-La couverture globale de uvforge SHALL être ≥ 100% (branches incluses).
+La couverture globale de yggtools SHALL être ≥ 100% (branches incluses).
 
 ---
 
@@ -533,7 +533,7 @@ La couverture globale de uvforge SHALL être ≥ 100% (branches incluses).
 | **scaffold** | Création de la structure de répertoires et fichiers d'un projet |
 | **pipeline qualité** | Séquence de vérifications automatiques (format, lint, type, test, sécurité) |
 | **work/** | Répertoire de sorties temporaires (logs, coverage, dist) ignoré par `.gitignore` |
-| **template** | Fichier avec variables Jinja2 embarqué dans uvforge et rendu lors de l'init |
+| **template** | Fichier avec variables Jinja2 embarqué dans yggtools et rendu lors de l'init |
 | **uv** | Gestionnaire de packages et d'environnements Python développé par Astral |
 | **hatchling** | Backend de build Python moderne, utilisé par défaut avec uv |
 | **mkforge** | Bibliothèque PyPI fournissant un DSL Python pour la génération de Markdown structuré |

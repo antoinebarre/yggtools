@@ -1,7 +1,7 @@
-"""uvforge demo script.
+"""yggtools demo script.
 
-Demonstrates the full uvforge init workflow in a temporary directory,
-then runs uvforge check on the result, and shows the generated file tree.
+Demonstrates the full yggtools init workflow in a temporary directory,
+then runs yggtools check on the result, and shows the generated file tree.
 No real uv or git calls are made — dev dependency installation is skipped
 so the demo runs without a network connection.
 
@@ -22,9 +22,9 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.tree import Tree
 
-from uvforge.check import run_check
-from uvforge.init import run_init
-from uvforge.models import ProjectContext, make_package_name
+from yggtools.check import run_check
+from yggtools.init import run_init
+from yggtools.models import ProjectContext, make_package_name
 
 _console = Console()
 
@@ -66,7 +66,7 @@ def _show_file(project_dir: Path, relative: str) -> None:
 
 
 def _run_demo_init(project_dir: Path, project_name: str) -> None:
-    """Execute uvforge init with patched uv/git calls.
+    """Execute yggtools init with patched uv/git calls.
 
     Args:
         project_dir: Target project directory.
@@ -80,15 +80,15 @@ def _run_demo_init(project_dir: Path, project_name: str) -> None:
         no_git=True,
     )
     with (
-        patch("uvforge.init.check_uv_available"),
-        patch("uvforge.init.uv_add_dev_deps"),
-        patch("uvforge.init.uv_sync"),
+        patch("yggtools.init.check_uv_available"),
+        patch("yggtools.init.uv_add_dev_deps"),
+        patch("yggtools.init.uv_sync"),
     ):
         run_init(ctx)
 
 
 def _run_demo_check(project_dir: Path) -> int:
-    """Run uvforge check and display the results table.
+    """Run yggtools check and display the results table.
 
     Args:
         project_dir: Project directory to audit.
@@ -99,7 +99,7 @@ def _run_demo_check(project_dir: Path) -> int:
     from rich.table import Table
 
     results = run_check(project_dir)
-    table = Table(title="uvforge check results", show_header=True)
+    table = Table(title="yggtools check results", show_header=True)
     table.add_column("Check", style="bold")
     table.add_column("Status", justify="center")
     table.add_column("Detail", style="dim")
@@ -115,7 +115,7 @@ def _run_demo_check(project_dir: Path) -> int:
 
 
 def main() -> int:
-    """Run the uvforge demo.
+    """Run the yggtools demo.
 
     Returns:
         Exit code: 0 on success, 1 on demo failure.
@@ -124,7 +124,7 @@ def main() -> int:
     _console.print()
     _console.print(
         Panel.fit(
-            "[bold cyan]uvforge demo[/bold cyan]\n"
+            "[bold cyan]yggtools demo[/bold cyan]\n"
             f"Scaffolding project: [yellow]{project_name}[/yellow]",
             border_style="cyan",
         )
@@ -133,7 +133,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmpdir:
         project_dir = Path(tmpdir) / project_name
 
-        _console.print("\n[bold]Step 1 — uvforge init[/bold]")
+        _console.print("\n[bold]Step 1 — yggtools init[/bold]")
         _run_demo_init(project_dir, project_name)
         _console.print("  [green]✓[/green] Initialisation complete")
 
@@ -147,7 +147,7 @@ def main() -> int:
         _show_file(project_dir, "Makefile")
         _show_file(project_dir, ".python-version")
 
-        _console.print("\n[bold]Step 4 — uvforge check[/bold]")
+        _console.print("\n[bold]Step 4 — yggtools check[/bold]")
         failed = _run_demo_check(project_dir)
 
         _console.print()

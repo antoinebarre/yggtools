@@ -1,1 +1,1 @@
-"""Test suite for uvforge."""
+"""Test suite for yggtools."""

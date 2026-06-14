@@ -1,4 +1,4 @@
-"""Orchestration logic for the uvforge init command."""
+"""Orchestration logic for the yggtools init command."""
 
 from __future__ import annotations
 
@@ -6,14 +6,14 @@ import stat
 
 from rich.console import Console
 
-from uvforge.models import ProjectContext
-from uvforge.renderer import (
+from yggtools.models import ProjectContext
+from yggtools.renderer import (
     embedded_script_path,
     list_embedded_scripts,
     render_template,
 )
-from uvforge.scaffold import copy_script, scaffold_project, write_file
-from uvforge.uv_runner import (
+from yggtools.scaffold import copy_script, scaffold_project, write_file
+from yggtools.uv_runner import (
     DEV_DEPS,
     check_uv_available,
     git_add_all,
@@ -47,7 +47,7 @@ class InitError(RuntimeError):
 
 
 def run_init(ctx: ProjectContext) -> None:
-    """Execute the full uvforge init workflow.
+    """Execute the full yggtools init workflow.
 
     Creates the project scaffold, renders configuration files, copies
     embedded quality scripts, installs dev dependencies via uv, and
@@ -191,7 +191,7 @@ def _init_git(ctx: ProjectContext) -> None:
     """
     git_init(ctx.project_dir)
     git_add_all(ctx.project_dir)
-    git_commit(ctx.project_dir, "chore: uvforge init")
+    git_commit(ctx.project_dir, "chore: yggtools init")
 
 
 def _print_dry_run_plan(ctx: ProjectContext) -> None:

@@ -1,1 +1,1 @@
-"""Quality pipeline scripts for uvforge."""
+"""Quality pipeline scripts for yggtools."""

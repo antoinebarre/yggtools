@@ -108,7 +108,7 @@ print_failures() {
 cleanup
 
 echo ""
-printf "${B}uvforge quality pipeline — mode: %s${N}\n" "$MODE"
+printf "${B}yggtools quality pipeline — mode: %s${N}\n" "$MODE"
 printf "${B}%s${N}\n" "$SEP"
 printf "%-7s  %-20s  %s\n" "Status" "Check" "Detail"
 printf "${B}%s${N}\n" "$SEP"

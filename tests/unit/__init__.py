@@ -1,1 +1,1 @@
-"""Unit tests for uvforge modules."""
+"""Unit tests for yggtools modules."""

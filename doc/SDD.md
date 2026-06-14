@@ -1,6 +1,6 @@
 # SDD — Software Design Document
 
-**Projet :** uvforge  
+**Projet :** yggtools  
 **Version :** 1.3  
 **Date :** 2026-06-13  
 **Auteur :** Antoine Barré  
@@ -27,8 +27,8 @@
 
 ### 1.1 Objectifs
 
-- **Minimalisme** : uvforge doit dépendre du minimum de packages externes.
-- **Reproductibilité** : deux `uvforge init` avec les mêmes paramètres produisent des projets identiques.
+- **Minimalisme** : yggtools doit dépendre du minimum de packages externes.
+- **Reproductibilité** : deux `yggtools init` avec les mêmes paramètres produisent des projets identiques.
 - **Testabilité** : chaque module est indépendant et testable sans effets de bord.
 - **Extensibilité** : ajouter un nouveau script ou template ne nécessite pas de modifier la logique métier.
 
@@ -36,7 +36,7 @@
 
 - Les scripts embarqués sont des fichiers statiques, pas du code généré dynamiquement.
 - Les appels à `uv` et `git` se font via `subprocess` — aucun binding Python n'est disponible.
-- uvforge ne modifie jamais `uv` ni ses fichiers de configuration.
+- yggtools ne modifie jamais `uv` ni ses fichiers de configuration.
 
 ---
 
@@ -76,15 +76,15 @@
               └──────────────────┘
 ```
 
-### 2.2 Structure du package uvforge
+### 2.2 Structure du package yggtools
 
 ```
-src/uvforge/
+src/yggtools/
 ├── __init__.py          # version, __all__
 ├── cli.py               # point d'entrée Typer
-├── init.py              # orchestration de uvforge init
-├── check.py             # orchestration de uvforge check
-├── update.py            # orchestration de uvforge update
+├── init.py              # orchestration de yggtools init
+├── check.py             # orchestration de yggtools check
+├── update.py            # orchestration de yggtools update
 ├── scaffold.py          # opérations filesystem
 ├── renderer.py          # rendu des templates Jinja2
 ├── uv_runner.py         # wrapper subprocess uv/git
@@ -118,7 +118,7 @@ Contient les types de données partagés entre les modules.
 ```python
 @dataclass
 class ProjectContext:
-    """Contexte complet d'un projet uvforge."""
+    """Contexte complet d'un projet yggtools."""
     project_name: str        # "my-lib"
     package_name: str        # "my_lib"
     python_version: str      # "3.12"
@@ -129,7 +129,7 @@ class ProjectContext:
 
 @dataclass
 class CheckResult:
-    """Résultat d'une vérification uvforge check."""
+    """Résultat d'une vérification yggtools check."""
     label: str
     passed: bool
     detail: str = ""
@@ -160,7 +160,7 @@ class ReportData:
     """Données agrégées pour la génération du rapport de qualité."""
     project_name: str
     project_dir: Path
-    uvforge_version: str
+    yggtools_version: str
     generated_at: datetime
     check_results: list[CheckResult] = field(default_factory=list)
     checksums: list[FileChecksum] = field(default_factory=list)
@@ -207,7 +207,7 @@ Charge et rend les templates Jinja2 embarqués via `importlib.resources`.
 
 ```python
 def render_template(template_name: str, ctx: ProjectContext) -> str:
-    """Charge et rend un template depuis uvforge/templates/."""
+    """Charge et rend un template depuis yggtools/templates/."""
 
 def list_templates() -> list[str]:
     """Retourne les noms de templates disponibles."""
@@ -220,7 +220,7 @@ def list_templates() -> list[str]:
 | `{{ project_name }}` | Nom du projet (`my-lib`) |
 | `{{ package_name }}` | Nom du package Python (`my_lib`) |
 | `{{ python_version }}` | Version Python (`3.12`) |
-| `{{ uvforge_version }}` | Version de uvforge ayant généré le projet |
+| `{{ yggtools_version }}` | Version de yggtools ayant généré le projet |
 
 **Chargement des ressources :**
 
@@ -228,7 +228,7 @@ def list_templates() -> list[str]:
 from importlib.resources import files
 
 def _load_template(name: str) -> str:
-    return files("uvforge.templates").joinpath(name).read_text(encoding="utf-8")
+    return files("yggtools.templates").joinpath(name).read_text(encoding="utf-8")
 ```
 
 ### 3.4 `uv_runner.py`
@@ -277,7 +277,7 @@ DEV_DEPS: list[str] = [
 
 ### 3.5 `init.py`
 
-Orchestre le workflow complet de `uvforge init`. Appelle scaffold, renderer et uv_runner dans l'ordre.
+Orchestre le workflow complet de `yggtools init`. Appelle scaffold, renderer et uv_runner dans l'ordre.
 
 **Interface publique :**
 
@@ -318,7 +318,7 @@ _install_dev_deps(ctx)
 _init_git(ctx)            [si pas ctx.no_git]
   ├── git_init(ctx.project_dir)
   ├── git_add_all(ctx.project_dir)
-  └── git_commit(ctx.project_dir, "chore: uvforge init")
+  └── git_commit(ctx.project_dir, "chore: yggtools init")
 
 _print_summary(ctx)
 ```
@@ -446,7 +446,7 @@ def _sha256(path: Path) -> str: ...
 # Quality Report — <project_name>
 
 ## 1. Summary
-  Tableau : Project, Generated at, uvforge version, Checks passed, Checks failed
+  Tableau : Project, Generated at, yggtools version, Checks passed, Checks failed
 
 ## 2. Check Results
   Tableau : Check | Status | Detail
@@ -467,10 +467,10 @@ def _sha256(path: Path) -> str: ...
 
 ```toml
 [tool.hatch.build.targets.wheel]
-packages = ["src/uvforge"]
+packages = ["src/yggtools"]
 ```
 
-Hatch inclut automatiquement `src/uvforge/templates/` dans le wheel car `templates/` est un sous-package de `uvforge` (présence de `__init__.py`). L'utilisation de `force-include` est proscrite : elle crée un répertoire `uvforge/` à la racine de `site-packages` sans `__init__.py`, ce qui provoque une collision de namespace package masquant le vrai package installé.
+Hatch inclut automatiquement `src/yggtools/templates/` dans le wheel car `templates/` est un sous-package de `yggtools` (présence de `__init__.py`). L'utilisation de `force-include` est proscrite : elle crée un répertoire `yggtools/` à la racine de `site-packages` sans `__init__.py`, ce qui provoque une collision de namespace package masquant le vrai package installé.
 
 Les scripts dans `templates/scripts/` sont des fichiers **statiques** (non-templates Jinja2) — ils sont copiés tels quels.
 
@@ -482,10 +482,10 @@ Les fichiers `.tmpl` sont des templates Jinja2.
 from importlib.resources import files, as_file
 
 # Lecture d'un template
-content = files("uvforge.templates").joinpath("Makefile.tmpl").read_text()
+content = files("yggtools.templates").joinpath("Makefile.tmpl").read_text()
 
 # Copie d'un script
-with as_file(files("uvforge.templates.scripts").joinpath("check.sh")) as src:
+with as_file(files("yggtools.templates.scripts").joinpath("check.sh")) as src:
     shutil.copy2(src, dest)
     dest.chmod(dest.stat().st_mode | 0o111)
 ```
@@ -599,7 +599,7 @@ exit "$FAIL"
 
 ### 5.2 `generate_report.py` — structure interne
 
-Script autonome (sans import de `uvforge`) embarqué dans `templates/scripts/` et copié dans `scripts/` des projets générés.
+Script autonome (sans import de `yggtools`) embarqué dans `templates/scripts/` et copié dans `scripts/` des projets générés.
 
 **Algorithme principal :**
 
@@ -620,7 +620,7 @@ main(output: Path)
 
 **Contraintes de conception :**
 - `importlib.metadata` importé au niveau module (pas dans une fonction) pour respecter `PLC0415`.
-- `_uvforge_version()` attrape `importlib.metadata.PackageNotFoundError` explicitement (pas `Exception`).
+- `_yggtools_version()` attrape `importlib.metadata.PackageNotFoundError` explicitement (pas `Exception`).
 - Le scan de suppressions est découpé en `_scan_file_suppressions()` + `_extract_line_suppressions()` pour maintenir CC ≤ 10.
 - `PIPELINE_STEPS` liste les 9 noms dans l'ordre d'exécution de `check.sh`.
 
@@ -746,7 +746,7 @@ esac
 import typer
 from rich.console import Console
 
-app = typer.Typer(name="uvforge", help="uv overlay for Python package scaffolding.")
+app = typer.Typer(name="yggtools", help="uv overlay for Python package scaffolding.")
 console = Console()
 
 @app.command()
@@ -773,14 +773,14 @@ def update(
 
 ```toml
 [project.scripts]
-uvforge = "uvforge.cli:app"
+yggtools = "yggtools.cli:app"
 ```
 
 ---
 
 ## 7. Flux d'exécution
 
-### 7.1 `uvforge init mylib` — séquence nominale
+### 7.1 `yggtools init mylib` — séquence nominale
 
 ```
 CLI (cli.py)
@@ -815,11 +815,11 @@ CLI (cli.py)
         ├── uv_runner.uv_sync(project_dir)
         ├── uv_runner.git_init(project_dir)
         ├── uv_runner.git_add_all(project_dir)
-        ├── uv_runner.git_commit(project_dir, "chore: uvforge init")
+        ├── uv_runner.git_commit(project_dir, "chore: yggtools init")
         └── console.print(résumé)
 ```
 
-### 7.2 `uvforge check` — séquence nominale
+### 7.2 `yggtools check` — séquence nominale
 
 ```
 CLI → check.run_check(cwd, fix=False)
@@ -836,7 +836,7 @@ CLI → check.run_check(cwd, fix=False)
 
 ## 8. Gestion des erreurs
 
-### 8.1 Hiérarchie des exceptions uvforge
+### 8.1 Hiérarchie des exceptions yggtools
 
 ```python
 class UvforgeError(Exception): ...
@@ -889,7 +889,7 @@ tests/
 │   ├── test_publish_sh.py         # tests publish.sh via subprocess dans tmp_path
 │   └── test_security_deps_sh.py   # tests security_deps.sh via subprocess
 └── integration/
-    └── test_full_init.py          # uvforge init → make check → 0
+    └── test_full_init.py          # yggtools init → make check → 0
 ```
 
 ### 9.2 Fixtures partagées (`conftest.py`)
@@ -902,7 +902,7 @@ def empty_project(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def minimal_project(tmp_path: Path) -> Path:
-    """Projet uvforge complet minimal pour tester check/update."""
+    """Projet yggtools complet minimal pour tester check/update."""
     # Appelle run_init avec un mock uv_runner
     ...
 ```
@@ -961,19 +961,19 @@ Typer génère les parseurs d'arguments depuis les annotations de type Python, c
 
 ### 10.6 `work/` : contenu ignoré par git, répertoire tracké
 
-Le fichier `.gitkeep` est créé par uvforge et ajouté dans `.gitignore` avec l'exception `!work/.gitkeep`. Le contenu (`*.log`, `.coverage`, `dist/`, `requirements_runtime.txt`) est ignoré par la règle `work/*`. Ceci reproduit exactement le comportement de mkforge.
+Le fichier `.gitkeep` est créé par yggtools et ajouté dans `.gitignore` avec l'exception `!work/.gitkeep`. Le contenu (`*.log`, `.coverage`, `dist/`, `requirements_runtime.txt`) est ignoré par la règle `work/*`. Ceci reproduit exactement le comportement de mkforge.
 
-### 10.7 Pourquoi `generate_report.py` est un script autonome sans import de `uvforge`
+### 10.7 Pourquoi `generate_report.py` est un script autonome sans import de `yggtools`
 
-Le script est copié dans `scripts/` du projet cible et exécuté par `uv run` dans cet environnement, qui n'a pas `uvforge` installé. Un import de `uvforge` ferait échouer l'exécution dans tout projet généré. La duplication de la logique de scan de suppressions entre `uvforge.suppressions` et `generate_report.py` est volontaire et documentée.
+Le script est copié dans `scripts/` du projet cible et exécuté par `uv run` dans cet environnement, qui n'a pas `yggtools` installé. Un import de `yggtools` ferait échouer l'exécution dans tout projet généré. La duplication de la logique de scan de suppressions entre `yggtools.suppressions` et `generate_report.py` est volontaire et documentée.
 
 ### 10.8 Pourquoi `mkforge` et non `string.Template` pour le rapport
 
 `mkforge` fournit un DSL Python orienté domaine (`Report`, `Chapter`, `Section`, `Table`, `Paragraph`) avec gestion automatique de la table des matières et des niveaux de titres. `string.Template` produirait du code de concaténation fragile et difficile à tester indépendamment. La dépendance est justifiée car `mkforge` est la bibliothèque de référence de génération de rapports Markdown pour ce projet.
 
-### 10.9 Pourquoi `REPORT_OUTPUT` et non une option CLI de `uvforge`
+### 10.9 Pourquoi `REPORT_OUTPUT` et non une option CLI de `yggtools`
 
-Le rapport est produit par `check.sh`, pas par `uvforge`. L'utilisateur peut intégrer `check.sh` dans des pipelines CI qui définissent déjà `REPORT_OUTPUT` comme variable d'environnement. Une option CLI supplémentaire sur `uvforge` aurait couplé la génération du rapport à la CLI alors que le workflow principal passe par `make check → check.sh`.
+Le rapport est produit par `check.sh`, pas par `yggtools`. L'utilisateur peut intégrer `check.sh` dans des pipelines CI qui définissent déjà `REPORT_OUTPUT` comme variable d'environnement. Une option CLI supplémentaire sur `yggtools` aurait couplé la génération du rapport à la CLI alors que le workflow principal passe par `make check → check.sh`.
 
 ### 10.10 Pourquoi les fichiers sentinelles `work/<nom>.exit`
 
@@ -989,7 +989,7 @@ Les workflows GitHub Actions et GitLab CI n'ont de sens que dans un dépôt git 
 
 ---
 
-## 11. CI du projet uvforge lui-même
+## 11. CI du projet yggtools lui-même
 
 ### 11.1 Fichiers
 
@@ -1037,7 +1037,7 @@ Avant le premier déploiement, configurer sur pypi.org → Project → Publishin
 | Champ | Valeur |
 |---|---|
 | Owner | `antoinebarre` |
-| Repository | `uvforge` |
+| Repository | `yggtools` |
 | Workflow filename | `publish.yml` |
 | Environment | `pypi` |
 

@@ -1,4 +1,4 @@
-# uvforge — Document de Conception
+# yggtools — Document de Conception
 
 **Version :** 0.1.0  
 **Date :** 2026-06-12  
@@ -8,11 +8,11 @@
 
 ## 1. Vision et objectif
 
-`uvforge` est un outil de développement (dev tool) qui vient **surcharger `uv`** pour fournir une couche d'organisation, de scripts de qualité et de pipeline CI reproductible. Il ne s'installe pas comme dépendance d'un projet cible : il s'utilise globalement (ou dans l'environnement dev) pour **initialiser** et **maintenir** la structure d'un package Python selon un standard opinionné.
+`yggtools` est un outil de développement (dev tool) qui vient **surcharger `uv`** pour fournir une couche d'organisation, de scripts de qualité et de pipeline CI reproductible. Il ne s'installe pas comme dépendance d'un projet cible : il s'utilise globalement (ou dans l'environnement dev) pour **initialiser** et **maintenir** la structure d'un package Python selon un standard opinionné.
 
 L'inspiration directe est [mkforge](https://github.com/antoinebarre/mkforge) : même philosophie de pipeline `make`, même ensemble d'outils (ruff, flake8, mypy, bandit, pytest, pip-audit), même structure de répertoires `src/`.
 
-### Ce que uvforge fait
+### Ce que yggtools fait
 
 - Initialise un package Python avec la structure standard (`src/`, `tests/`, `scripts/`, `work/`, `doc/`)
 - Génère les fichiers de configuration des outils (`pyproject.toml`, `.python-version`, `.gitignore`)
@@ -21,7 +21,7 @@ L'inspiration directe est [mkforge](https://github.com/antoinebarre/mkforge) : m
 - Configure `uv` (dépendances dev, groupes)
 - S'assure que le projet peut passer un `make check` dès la création
 
-### Ce que uvforge ne fait pas
+### Ce que yggtools ne fait pas
 
 - Ne s'ajoute pas au `dependencies` du projet cible
 - Ne modifie pas `uv` lui-même
@@ -33,21 +33,21 @@ L'inspiration directe est [mkforge](https://github.com/antoinebarre/mkforge) : m
 ### Commande racine
 
 ```
-uvforge <command> [options]
+yggtools <command> [options]
 ```
 
 ### Commandes
 
 | Commande | Description |
 |---|---|
-| `uvforge init` | Initialise un nouveau package dans le répertoire courant (ou `<name>`) |
-| `uvforge check` | Vérifie que la structure du projet est conforme (audit) |
-| `uvforge update` | Met à jour les scripts et Makefile depuis les templates intégrés |
+| `yggtools init` | Initialise un nouveau package dans le répertoire courant (ou `<name>`) |
+| `yggtools check` | Vérifie que la structure du projet est conforme (audit) |
+| `yggtools update` | Met à jour les scripts et Makefile depuis les templates intégrés |
 
-### `uvforge init` — interface détaillée
+### `yggtools init` — interface détaillée
 
 ```
-uvforge init [PROJECT_NAME] [OPTIONS]
+yggtools init [PROJECT_NAME] [OPTIONS]
 
 Arguments:
   PROJECT_NAME    Nom du package (optionnel, défaut = nom du dossier courant)
@@ -62,15 +62,15 @@ Options:
 **Exemple :**
 ```bash
 mkdir mylib && cd mylib
-uvforge init
+yggtools init
 # ou directement :
-uvforge init mylib
+yggtools init mylib
 ```
 
-### `uvforge check` — interface détaillée
+### `yggtools check` — interface détaillée
 
 ```
-uvforge check [OPTIONS]
+yggtools check [OPTIONS]
 
 Options:
   --fix     Tente de corriger les écarts détectés (recopy des scripts manquants)
@@ -82,15 +82,15 @@ Vérifie la présence et la conformité de :
 - Scripts dans `scripts/`
 - Groupes de dépendances dev dans `pyproject.toml`
 
-### `uvforge update`
+### `yggtools update`
 
-Met à jour les fichiers gérés par uvforge (scripts, Makefile) avec la dernière version embarquée dans le package. Protège les fichiers modifiés par l'utilisateur avec un diff interactif.
+Met à jour les fichiers gérés par yggtools (scripts, Makefile) avec la dernière version embarquée dans le package. Protège les fichiers modifiés par l'utilisateur avec un diff interactif.
 
 ---
 
 ## 3. Structure générée dans le projet cible
 
-Après `uvforge init mylib`, le répertoire résultant est :
+Après `yggtools init mylib`, le répertoire résultant est :
 
 ```
 mylib/
@@ -231,7 +231,7 @@ exclude_dirs = ["tests", "work"]
 
 ## 6. Scripts embarqués
 
-Les scripts sont des **ressources statiques** incluses dans le package uvforge (via `importlib.resources`) et copiées lors du `init`.
+Les scripts sont des **ressources statiques** incluses dans le package yggtools (via `importlib.resources`) et copiées lors du `init`.
 
 ### `scripts/check.sh`
 
@@ -289,17 +289,17 @@ Séquence :
 
 ---
 
-## 7. Architecture interne de uvforge
+## 7. Architecture interne de yggtools
 
 ```
-uvforge/
+yggtools/
 ├── src/
-│   └── uvforge/
+│   └── yggtools/
 │       ├── __init__.py
 │       ├── cli.py           # Point d'entrée Click/Typer
-│       ├── init.py          # Logique métier de uvforge init
-│       ├── check.py         # Logique métier de uvforge check
-│       ├── update.py        # Logique métier de uvforge update
+│       ├── init.py          # Logique métier de yggtools init
+│       ├── check.py         # Logique métier de yggtools check
+│       ├── update.py        # Logique métier de yggtools update
 │       ├── renderer.py      # Rendu des templates (Jinja2 ou string.Template)
 │       ├── scaffold.py      # Création des répertoires et fichiers
 │       ├── uv_runner.py     # Appels subprocess à uv
@@ -320,7 +320,7 @@ uvforge/
 └── pyproject.toml
 ```
 
-### Dépendances de uvforge lui-même
+### Dépendances de yggtools lui-même
 
 | Package | Rôle |
 |---|---|
@@ -332,7 +332,7 @@ Uvforge ne dépend pas des outils qu'il installe (ruff, mypy, etc.) — ceux-ci 
 
 ---
 
-## 8. Logique métier — `uvforge init`
+## 8. Logique métier — `yggtools init`
 
 ### Algorithme
 
@@ -342,12 +342,12 @@ Uvforge ne dépend pas des outils qu'il installe (ruff, mypy, etc.) — ceux-ci 
 3. Vérifier que uv est disponible dans le PATH
 4. Créer l'arborescence des répertoires (scaffold)
 5. Rendre et écrire les fichiers de configuration depuis les templates
-6. Copier les scripts depuis uvforge/templates/scripts/
+6. Copier les scripts depuis yggtools/templates/scripts/
 7. Appeler `uv init --lib --name <project_name>` si pas déjà initialisé,
    ou adapter pyproject.toml si uv init déjà fait
 8. Appeler `uv add --group dev ruff flake8 mypy pytest pytest-cov bandit pip-audit twine`
 9. Appeler `uv sync`
-10. Si --no-git absent : appeler `git init && git add . && git commit -m "chore: uvforge init"`
+10. Si --no-git absent : appeler `git init && git add . && git commit -m "chore: yggtools init"`
 11. Afficher le résumé avec les prochaines étapes
 ```
 
@@ -358,11 +358,11 @@ Uvforge ne dépend pas des outils qu'il installe (ruff, mypy, etc.) — ceux-ci 
 
 ### Détection de conflit
 
-Si le répertoire cible contient déjà un `pyproject.toml`, uvforge demande confirmation avant de continuer (sauf `--force`).
+Si le répertoire cible contient déjà un `pyproject.toml`, yggtools demande confirmation avant de continuer (sauf `--force`).
 
 ---
 
-## 9. Logique métier — `uvforge check`
+## 9. Logique métier — `yggtools check`
 
 Parcourt le projet courant et vérifie :
 
@@ -381,10 +381,10 @@ Retourne un rapport coloré avec PASS/FAIL par item.
 
 ---
 
-## 10. Logique métier — `uvforge update`
+## 10. Logique métier — `yggtools update`
 
 1. Pour chaque fichier géré (scripts, Makefile) :
-   - Compare le contenu actuel avec la version embarquée dans uvforge
+   - Compare le contenu actuel avec la version embarquée dans yggtools
    - Si différent : affiche un diff et propose de remplacer / conserver / ignorer
 2. Met à jour les versions des dépendances dev dans `pyproject.toml` (optionnel, `--deps`)
 
@@ -394,19 +394,19 @@ Retourne un rapport coloré avec PASS/FAIL par item.
 
 ### Phase 1 — Fondations (MVP)
 
-- [ ] Structure du package uvforge avec `src/` layout
+- [ ] Structure du package yggtools avec `src/` layout
 - [ ] CLI `typer` avec commande `init`
 - [ ] `scaffold.py` : création des répertoires (y compris `work/` avec `.gitkeep`)
 - [ ] `renderer.py` : rendu des templates Jinja2
 - [ ] Templates : `pyproject.toml.tmpl`, `Makefile.tmpl`, `.gitignore.tmpl`, `README.md.tmpl`
 - [ ] Scripts copiés : `check.sh`, `check_docstrings.py`, `code_metrics.py`, `security_deps.sh`, `publish.sh`
 - [ ] `uv_runner.py` : appels `uv add`, `uv sync`
-- [ ] Tests unitaires de chaque module uvforge
+- [ ] Tests unitaires de chaque module yggtools
 - [ ] Tests des scripts embarqués (docstrings, metrics, publish) via subprocess dans tmpdir
 
 ### Phase 2 — Robustesse
 
-- [ ] Commande `uvforge check`
+- [ ] Commande `yggtools check`
 - [ ] Gestion `--force`, `--dry-run`, `--no-git`
 - [ ] Détection de conflit et confirmation interactive
 - [ ] Messages d'erreur `rich` bien formatés
@@ -414,21 +414,21 @@ Retourne un rapport coloré avec PASS/FAIL par item.
 
 ### Phase 3 — Maintenance
 
-- [ ] Commande `uvforge update`
+- [ ] Commande `yggtools update`
 - [ ] Autocomplétion shell (typer natif)
-- [ ] Publication sur PyPI pour installation globale via `uv tool install uvforge`
+- [ ] Publication sur PyPI pour installation globale via `uv tool install yggtools`
 
 ---
 
 ## 12. Installation et usage global
 
-uvforge est conçu pour s'installer globalement via :
+yggtools est conçu pour s'installer globalement via :
 
 ```bash
-uv tool install uvforge
+uv tool install yggtools
 ```
 
-Cela le rend disponible comme commande système sans polluer aucun projet. L'utilisateur n'a jamais besoin d'ajouter `uvforge` aux dépendances de ses projets.
+Cela le rend disponible comme commande système sans polluer aucun projet. L'utilisateur n'a jamais besoin d'ajouter `yggtools` aux dépendances de ses projets.
 
 ---
 

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "uvforge"
+name = "yggtools"
 version = "0.1.0"
 description = "uv overlay for opinionated Python package scaffolding."
 readme = "README.md"
@@ -19,31 +19,31 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/antoinebarre/uvforge"
-Repository = "https://github.com/antoinebarre/uvforge"
+Homepage = "https://github.com/antoinebarre/yggtools"
+Repository = "https://github.com/antoinebarre/yggtools"
 
 [project.scripts]
-uvforge = "uvforge.cli:main"
+yggtools = "yggtools.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/uvforge"]
+packages = ["src/yggtools"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--tb=short --cov=src/uvforge --cov-report=term-missing --cov-fail-under=100"
+addopts = "--tb=short --cov=src/yggtools --cov-report=term-missing --cov-fail-under=100"
 pythonpath = ["src"]
 cache_dir = "work/.pytest_cache"
 
 [tool.coverage.run]
 data_file = "work/.coverage"
-source = ["src/uvforge"]
+source = ["src/yggtools"]
 omit = [
-    "src/uvforge/templates/*",
+    "src/yggtools/templates/*",
 ]
 
 [tool.mypy]
 strict = true
-packages = ["uvforge"]
+packages = ["yggtools"]
 mypy_path = "src"
 cache_dir = "work/.mypy_cache"
 
@@ -57,7 +57,7 @@ ignore = ["TC001", "TC002", "TC003", "TC004"]
 
 [tool.ruff.lint.per-file-ignores]
 # CLI entry points use bool flags with defaults — FBT002 is intentional here.
-"src/uvforge/cli.py" = ["FBT002"]
+"src/yggtools/cli.py" = ["FBT002"]
 # Test files: assert statements (S101) and magic values (PLR2004) are expected.
 "tests/**" = ["S101", "PLR2004", "S603", "S607"]
 
@@ -75,8 +75,8 @@ statistics = true
 [tool.bandit]
 exclude_dirs = ["tests", "work", ".venv"]
 
-[tool.uvforge.code_metrics]
-paths = ["src/uvforge", "tests"]
+[tool.yggtools.code_metrics]
+paths = ["src/yggtools", "tests"]
 exclude = []
 max_cyclomatic_complexity = 10
 max_module_logical_lines = 900

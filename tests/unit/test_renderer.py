@@ -1,4 +1,4 @@
-"""Unit tests for uvforge.renderer."""
+"""Unit tests for yggtools.renderer."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from uvforge.models import ProjectContext
-from uvforge.renderer import (
+from yggtools.models import ProjectContext
+from yggtools.renderer import (
     embedded_script_path,
     list_embedded_scripts,
     list_templates,

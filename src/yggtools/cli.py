@@ -1,4 +1,4 @@
-"""Command-line interface for uvforge."""
+"""Command-line interface for yggtools."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from uvforge.check import run_check
-from uvforge.init import ConflictError, run_init
-from uvforge.models import ProjectContext, make_package_name
-from uvforge.uv_runner import UvNotFoundError
+from yggtools.check import run_check
+from yggtools.init import ConflictError, run_init
+from yggtools.models import ProjectContext, make_package_name
+from yggtools.uv_runner import UvNotFoundError
 
 app = typer.Typer(
-    name="uvforge",
+    name="yggtools",
     help="uv overlay for opinionated Python package scaffolding.",
     no_args_is_help=True,
 )
@@ -57,7 +57,7 @@ def init(
         ),
     ] = False,
 ) -> None:
-    """Initialise a new Python package with the uvforge quality pipeline.
+    """Initialise a new Python package with the yggtools quality pipeline.
 
     Creates the full project structure including src/ layout, embedded
     quality scripts, Makefile pipeline, and dev dependencies managed by uv.
@@ -102,7 +102,7 @@ def check(
         ),
     ] = None,
 ) -> None:
-    """Audit a project directory for uvforge structural conformance.
+    """Audit a project directory for yggtools structural conformance.
 
     Checks for required directories, scripts, Makefile targets, and
     dev dependencies. Exits with code 1 if any check fails.
@@ -110,7 +110,7 @@ def check(
     project_dir = Path(path) if path else Path.cwd()
     results = run_check(project_dir)
 
-    table = Table(title=f"uvforge check — {project_dir}", show_header=True)
+    table = Table(title=f"yggtools check — {project_dir}", show_header=True)
     table.add_column("Check", style="bold")
     table.add_column("Status", justify="center")
     table.add_column("Detail", style="dim")
@@ -131,7 +131,7 @@ def check(
 
 
 def main() -> None:  # pragma: no cover
-    """Entry point for the uvforge CLI application."""
+    """Entry point for the yggtools CLI application."""
     app()
 
 

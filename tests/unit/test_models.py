@@ -1,4 +1,4 @@
-"""Unit tests for uvforge.models."""
+"""Unit tests for yggtools.models."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from uvforge.models import CheckResult, ProjectContext, make_package_name
+from yggtools.models import CheckResult, ProjectContext, make_package_name
 
 
 def test_make_package_name_hyphen() -> None:

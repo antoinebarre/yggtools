@@ -1,4 +1,4 @@
-"""Unit tests for uvforge.uv_runner."""
+"""Unit tests for yggtools.uv_runner."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from uvforge.uv_runner import (
+from yggtools.uv_runner import (
     CommandError,
     UvNotFoundError,
     check_uv_available,
@@ -23,7 +23,7 @@ from uvforge.uv_runner import (
 def test_check_uv_available_raises_when_not_found() -> None:
     """Requirement: check_uv_available must raise UvNotFoundError if absent."""
     with (
-        patch("uvforge.uv_runner.shutil.which", return_value=None),
+        patch("yggtools.uv_runner.shutil.which", return_value=None),
         pytest.raises(UvNotFoundError),
     ):
         check_uv_available()
@@ -31,7 +31,7 @@ def test_check_uv_available_raises_when_not_found() -> None:
 
 def test_check_uv_available_passes_when_found() -> None:
     """Requirement: check_uv_available must not raise when uv is in PATH."""
-    with patch("uvforge.uv_runner.shutil.which", return_value="/usr/bin/uv"):
+    with patch("yggtools.uv_runner.shutil.which", return_value="/usr/bin/uv"):
         check_uv_available()  # must not raise
 
 
@@ -57,7 +57,7 @@ def test_command_error_stores_returncode(tmp_path: Path) -> None:
 
 def test_uv_add_dev_deps_calls_uv(tmp_path: Path) -> None:
     """Requirement: uv_add_dev_deps must invoke uv add --group dev."""
-    with patch("uvforge.uv_runner.run_command") as mock_run:
+    with patch("yggtools.uv_runner.run_command") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         uv_add_dev_deps(tmp_path, ["ruff>=0.4"])
     called_cmd = mock_run.call_args[0][0]
@@ -70,7 +70,7 @@ def test_uv_add_dev_deps_calls_uv(tmp_path: Path) -> None:
 
 def test_uv_sync_calls_uv_sync(tmp_path: Path) -> None:
     """Requirement: uv_sync must invoke uv sync in the project directory."""
-    with patch("uvforge.uv_runner.run_command") as mock_run:
+    with patch("yggtools.uv_runner.run_command") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         uv_sync(tmp_path)
     called_cmd = mock_run.call_args[0][0]
@@ -79,7 +79,7 @@ def test_uv_sync_calls_uv_sync(tmp_path: Path) -> None:
 
 def test_git_init_calls_git_init(tmp_path: Path) -> None:
     """Requirement: git_init must invoke git init in the project directory."""
-    with patch("uvforge.uv_runner.run_command") as mock_run:
+    with patch("yggtools.uv_runner.run_command") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         git_init(tmp_path)
     called_cmd = mock_run.call_args[0][0]
@@ -88,7 +88,7 @@ def test_git_init_calls_git_init(tmp_path: Path) -> None:
 
 def test_git_add_all_calls_git_add(tmp_path: Path) -> None:
     """Requirement: git_add_all must invoke git add -A."""
-    with patch("uvforge.uv_runner.run_command") as mock_run:
+    with patch("yggtools.uv_runner.run_command") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         git_add_all(tmp_path)
     called_cmd = mock_run.call_args[0][0]
@@ -97,7 +97,7 @@ def test_git_add_all_calls_git_add(tmp_path: Path) -> None:
 
 def test_git_commit_calls_git_commit(tmp_path: Path) -> None:
     """Requirement: git_commit must invoke git commit with the message."""
-    with patch("uvforge.uv_runner.run_command") as mock_run:
+    with patch("yggtools.uv_runner.run_command") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         git_commit(tmp_path, "chore: init")
     called_cmd = mock_run.call_args[0][0]

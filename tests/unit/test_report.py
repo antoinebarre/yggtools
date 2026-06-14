@@ -1,4 +1,4 @@
-"""Unit tests for uvforge.report."""
+"""Unit tests for yggtools.report."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from pathlib import Path
 
 from mkforge import Chapter, Report
 
-from uvforge.models import (
+from yggtools.models import (
     CheckResult,
     FileChecksum,
     ReportData,
     SuppressionItem,
 )
-from uvforge.report import (
+from yggtools.report import (
     _check_results_chapter,
     _checksums_chapter,
     _sha256,
@@ -59,7 +59,7 @@ def _make_report_data(
     return ReportData(
         project_name="test-proj",
         project_dir=tmp_path,
-        uvforge_version="0.1.0",
+        yggtools_version="0.1.0",
         generated_at=datetime(2026, 6, 13, 12, 0, 0, tzinfo=UTC),
         check_results=check_results or [],
         checksums=checksums or [],
@@ -281,4 +281,4 @@ def test_build_report_data_runs_checks(tmp_path: Path) -> None:
     data = build_report_data(tmp_path)
     assert len(data.check_results) > 0
     assert data.project_name == tmp_path.name
-    assert data.uvforge_version != ""
+    assert data.yggtools_version != ""

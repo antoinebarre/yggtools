@@ -113,7 +113,7 @@ def _load_config(path: Path) -> MetricsConfig:
         Parsed metrics configuration.
     """
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
-    table = raw["tool"]["uvforge"]["code_metrics"]
+    table = raw["tool"]["yggtools"]["code_metrics"]
     return MetricsConfig(
         paths=tuple(Path(value) for value in _string_tuple(table["paths"])),
         exclude=_string_tuple(table.get("exclude", [])),

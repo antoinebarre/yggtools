@@ -1,4 +1,4 @@
-"""Filesystem scaffold operations for uvforge project initialisation."""
+"""Filesystem scaffold operations for yggtools project initialisation."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import shutil
 import stat
 from pathlib import Path
 
-from uvforge.models import ProjectContext
+from yggtools.models import ProjectContext
 
 _GITKEEP = ".gitkeep"
 

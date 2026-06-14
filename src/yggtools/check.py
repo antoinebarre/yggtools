@@ -1,4 +1,4 @@
-"""Structural audit logic for the uvforge check command."""
+"""Structural audit logic for the yggtools check command."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 import stat
 from pathlib import Path
 
-from uvforge.models import CheckResult
+from yggtools.models import CheckResult
 
 _REQUIRED_SCRIPTS = [
     "check.sh",
@@ -39,7 +39,7 @@ _REQUIRED_DEV_TOOLS = [
 
 
 def run_check(project_dir: Path) -> list[CheckResult]:
-    """Audit a project directory for uvforge structural conformance.
+    """Audit a project directory for yggtools structural conformance.
 
     Checks for required directories, scripts, Makefile targets, dev
     dependencies, and the ``work/.gitkeep`` sentinel file.

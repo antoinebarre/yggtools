@@ -1,4 +1,4 @@
-"""Shared data models for uvforge scaffold operations."""
+"""Shared data models for yggtools scaffold operations."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class ProjectContext:
-    """Complete context for a uvforge project initialisation.
+    """Complete context for a yggtools project initialisation.
 
     Attributes:
         project_name: Human-readable project name, e.g. ``my-lib``.
@@ -33,7 +33,7 @@ class ProjectContext:
 
 @dataclass(frozen=True)
 class CheckResult:
-    """Result of a single uvforge structural check.
+    """Result of a single yggtools structural check.
 
     Attributes:
         label: Human-readable description of the check.
@@ -82,12 +82,12 @@ class FileChecksum:
 
 @dataclass
 class ReportData:
-    """Aggregated data produced by a single uvforge check run.
+    """Aggregated data produced by a single yggtools check run.
 
     Attributes:
         project_name: Human-readable name of the audited project.
         project_dir: Absolute path to the audited project root.
-        uvforge_version: Version string of the running uvforge tool.
+        yggtools_version: Version string of the running yggtools tool.
         generated_at: UTC timestamp of report generation.
         check_results: Ordered list of structural check outcomes.
         checksums: SHA-256 digests for all audited source files.
@@ -96,7 +96,7 @@ class ReportData:
 
     project_name: str
     project_dir: Path
-    uvforge_version: str
+    yggtools_version: str
     generated_at: datetime
     check_results: list[CheckResult] = field(default_factory=list)
     checksums: list[FileChecksum] = field(default_factory=list)

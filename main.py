@@ -1,5 +1,5 @@
 def main():
-    print("Hello from uvforge!")
+    print("Hello from yggtools!")
 
 
 if __name__ == "__main__":

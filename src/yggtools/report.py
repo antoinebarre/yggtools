@@ -1,4 +1,4 @@
-"""Build and save the uvforge check report using mkforge."""
+"""Build and save the yggtools check report using mkforge."""
 
 from __future__ import annotations
 
@@ -14,15 +14,15 @@ from mkforge import (
     Table,
 )
 
-from uvforge import __version__
-from uvforge.check import run_check
-from uvforge.models import (
+from yggtools import __version__
+from yggtools.check import run_check
+from yggtools.models import (
     CheckResult,
     FileChecksum,
     ReportData,
     SuppressionItem,
 )
-from uvforge.suppressions import scan_suppressions
+from yggtools.suppressions import scan_suppressions
 
 _AUDITED_GLOBS: list[str] = [
     "src/**/*.py",
@@ -60,7 +60,7 @@ def build_report_data(project_dir: Path) -> ReportData:
     return ReportData(
         project_name=project_dir.name,
         project_dir=project_dir,
-        uvforge_version=__version__,
+        yggtools_version=__version__,
         generated_at=datetime.now(tz=UTC),
         check_results=check_results,
         checksums=checksums,
@@ -112,7 +112,7 @@ def render_report(data: ReportData) -> Report:
         ``.render()`` on.
     """
     report = Report(
-        title=f"uvforge check report — {data.project_name}",
+        title=f"yggtools check report — {data.project_name}",
         toc=True,
         auto_numbering=False,
     )
@@ -154,7 +154,7 @@ def _summary_chapter(data: ReportData) -> Chapter:
         rows=(
             ("Project", data.project_name),
             ("Directory", str(data.project_dir)),
-            ("uvforge version", data.uvforge_version),
+            ("yggtools version", data.yggtools_version),
             (
                 "Generated at",
                 data.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC"),

@@ -83,7 +83,7 @@ def _parse_args() -> argparse.Namespace:
         Parsed argument namespace with ``output`` and ``project_dir``.
     """
     parser = argparse.ArgumentParser(
-        description="Generate uvforge check report.",
+        description="Generate yggtools check report.",
     )
     parser.add_argument(
         "--output",
@@ -227,8 +227,8 @@ def _scan_suppressions(
     return items
 
 
-def _uvforge_version() -> str:
-    """Return the installed uvforge version string.
+def _yggtools_version() -> str:
+    """Return the installed yggtools version string.
 
     Reads from ``importlib.metadata``; returns ``"unknown"`` if the
     package is not installed in the current environment.
@@ -237,7 +237,7 @@ def _uvforge_version() -> str:
         Version string, or ``"unknown"`` if not determinable.
     """
     try:
-        return importlib.metadata.version("uvforge")
+        return importlib.metadata.version("yggtools")
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
 
@@ -262,7 +262,7 @@ def _build_report(
     passed = sum(1 for _, ok, _ in step_results if ok)
     failed = len(step_results) - passed
     now = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-    version = _uvforge_version()
+    version = _yggtools_version()
     project_name = project_dir.resolve().name
 
     summary = Chapter(title="Summary").add(
@@ -271,7 +271,7 @@ def _build_report(
             rows=(
                 ("Project", project_name),
                 ("Directory", str(project_dir.resolve())),
-                ("uvforge version", version),
+                ("yggtools version", version),
                 ("Generated at", now),
                 ("Checks passed", str(passed)),
                 ("Checks failed", str(failed)),
@@ -292,7 +292,7 @@ def _build_report(
     suppressions_chapter = _build_suppressions_chapter(suppressions)
 
     report = Report(
-        title=f"uvforge check report — {project_name}",
+        title=f"yggtools check report — {project_name}",
         toc=True,
     )
     report.add(

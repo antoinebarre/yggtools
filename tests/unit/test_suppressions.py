@@ -1,10 +1,10 @@
-"""Unit tests for uvforge.suppressions."""
+"""Unit tests for yggtools.suppressions."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from uvforge.suppressions import (
+from yggtools.suppressions import (
     _extract_suppressions,
     _scan_file,
     scan_suppressions,

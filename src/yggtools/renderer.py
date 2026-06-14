@@ -1,4 +1,4 @@
-"""Jinja2 template rendering for uvforge project files."""
+"""Jinja2 template rendering for yggtools project files."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
-from uvforge import __version__
-from uvforge.models import ProjectContext
+from yggtools import __version__
+from yggtools.models import ProjectContext
 
-_TEMPLATES_PACKAGE = "uvforge.templates"
+_TEMPLATES_PACKAGE = "yggtools.templates"
 
 
 def render_template(template_name: str, ctx: ProjectContext) -> str:
@@ -36,7 +36,7 @@ def render_template(template_name: str, ctx: ProjectContext) -> str:
         project_name=ctx.project_name,
         package_name=ctx.package_name,
         python_version=ctx.python_version,
-        uvforge_version=__version__,
+        yggtools_version=__version__,
     )
 
 
