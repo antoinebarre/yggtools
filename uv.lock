@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+members = [
+    "my-lib",
+    "yggtools",
+]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -723,15 +729,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mkforge"
-version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a6/73/89ab39fd057b8b518b9ef9641fa3e372cce9e5cbb01a0f17a8533a272d71/mkforge-0.1.0.tar.gz", hash = "sha256:b119a2320d4f6724b3bea9108077f2b0ad34b18c2353659089716dc64785be3d", size = 186061, upload-time = "2026-06-06T21:22:02.858Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/90/1eff8b8f00284a83f9f9d32c2ce36a2ea0ae6b1a1a0a51a8978631186c30/mkforge-0.1.0-py3-none-any.whl", hash = "sha256:638dcabf45c07f706df2618441e7e7b349590bf516c701a88f569c3d8608a687", size = 75024, upload-time = "2026-06-06T21:22:01.392Z" },
-]
-
-[[package]]
 name = "more-itertools"
 version = "11.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -790,6 +787,45 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2d/ce/011ffcd8b919f55196ec53f12ae162e21c879d95afba226894314ff62c07/msgpack-1.2.0-cp314-cp314t-win32.whl", hash = "sha256:378caf74c4c718dfc17590ce68a6d710ed398ff6fcf08237de23b77755730b55", size = 70782, upload-time = "2026-06-11T04:16:07.105Z" },
     { url = "https://files.pythonhosted.org/packages/57/a8/9b8791ca96b1be6b9f659c718271e2cb7f99f73f58aad2dd0b30f750f6c0/msgpack-1.2.0-cp314-cp314t-win_amd64.whl", hash = "sha256:553b42598165c4dd3235994fd6e4b0dfb1ce5f3fd33d94ba9609442643015f38", size = 77899, upload-time = "2026-06-11T04:16:08.353Z" },
     { url = "https://files.pythonhosted.org/packages/5b/04/3fa2dffb87bf598696b86bde7cd642d0a7590520c3fa24cd19611dfebeb7/msgpack-1.2.0-cp314-cp314t-win_arm64.whl", hash = "sha256:2825bb1da548d214ab8a810906b7dd69a10f3838b615a2cc46e5172d3cb44f6e", size = 71004, upload-time = "2026-06-11T04:16:09.556Z" },
+]
+
+[[package]]
+name = "my-lib"
+version = "0.1.0"
+source = { editable = "my-lib" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "bandit" },
+    { name = "flake8" },
+    { name = "flake8-bugbear" },
+    { name = "flake8-docstrings" },
+    { name = "flake8-pyproject" },
+    { name = "mypy" },
+    { name = "pep8-naming" },
+    { name = "pip-audit" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "yggtools" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bandit", specifier = ">=1.8" },
+    { name = "flake8", specifier = ">=7" },
+    { name = "flake8-bugbear", specifier = ">=24" },
+    { name = "flake8-docstrings", specifier = ">=1.7" },
+    { name = "flake8-pyproject", specifier = ">=1.2" },
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pep8-naming", specifier = ">=0.14" },
+    { name = "pip-audit", specifier = ">=2.8" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-cov", specifier = ">=6" },
+    { name = "ruff", specifier = ">=0.4" },
+    { name = "yggtools", editable = "." },
 ]
 
 [[package]]
@@ -1395,7 +1431,6 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
-    { name = "mkforge" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -1419,7 +1454,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "jinja2", specifier = ">=3.1" },
-    { name = "mkforge", specifier = ">=0.1" },
     { name = "rich", specifier = ">=13" },
     { name = "typer", specifier = ">=0.12" },
 ]
