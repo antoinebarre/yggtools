@@ -59,7 +59,7 @@ def _make_report_data(
     return ReportData(
         project_name="test-proj",
         project_dir=tmp_path,
-        yggtools_version="0.1.0",
+        yggtools_version="1.0.0",
         generated_at=datetime(2026, 6, 13, 12, 0, 0, tzinfo=UTC),
         check_results=check_results or [],
         checksums=checksums or [],

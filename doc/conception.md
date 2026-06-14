@@ -1,7 +1,7 @@
 # yggtools — Document de Conception
 
-**Version :** 0.1.0  
-**Date :** 2026-06-12  
+**Version :** 1.0.0  
+**Date :** 2026-06-14  
 **Auteur :** Antoine Barré
 
 ---
