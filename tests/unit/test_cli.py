@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from yggtools.cli import _run_with_progress, app
 from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
-from yggtools.repo_init.pipeline import PipelineStep, STEPS_INIT
+from yggtools.repo_init.pipeline import STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError
 
@@ -105,21 +105,8 @@ class TestInit:
     """Tests for the init command (in-place scaffold)."""
 
     def test_exits_1_when_no_pyproject(self, tmp_path: Path) -> None:
-        """Requirement: init must exit 1 if pyproject.toml is absent."""
-        result = _runner.invoke(
-            app,
-            ["init"],
-            catch_exceptions=False,
-        )
-        # CLI runs in the real cwd which has a pyproject.toml; we verify
-        # the guard logic by patching Path.cwd and checking for the error.
-        assert result.exit_code in (0, 1)  # just ensure it runs
-
-    def test_exits_1_when_no_pyproject_via_patch(self) -> None:
         """Requirement: init must exit 1 when pyproject.toml is absent."""
-        with patch("yggtools.cli.Path.cwd") as mock_cwd:
-            fake_dir = Path("/tmp/empty_dir_no_pyproject_xyz")
-            mock_cwd.return_value = fake_dir
+        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
             result = _runner.invoke(app, ["init"])
         assert result.exit_code == 1
 
@@ -213,11 +200,11 @@ class TestInit:
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
-        received_steps: list[object] = []
+        received_steps: list[PipelineStep] = []
 
         def _capture_steps(
             ctx: RepoContext,
-            steps: list | None = None,
+            steps: list[PipelineStep] | None = None,
         ) -> None:
             """Capture the steps argument passed to _run_with_progress.
 
@@ -231,7 +218,10 @@ class TestInit:
         with (
             patch("yggtools.cli.Path.cwd", return_value=tmp_path),
             patch("yggtools.cli.check_uv_available"),
-            patch("yggtools.cli._run_with_progress", side_effect=_capture_steps),
+            patch(
+                "yggtools.cli._run_with_progress",
+                side_effect=_capture_steps,
+            ),
         ):
             _runner.invoke(app, ["init"])
 

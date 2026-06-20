@@ -56,7 +56,7 @@ def test_steps_init_does_not_contain_uv_init() -> None:
 
 def test_steps_init_is_steps_full_minus_uv_init() -> None:
     """Requirement: STEPS_INIT must equal STEPS_FULL without the first step."""
-    assert STEPS_INIT == STEPS_FULL[1:]
+    assert STEPS_FULL[1:] == STEPS_INIT
 
 
 def test_steps_is_alias_for_steps_full() -> None:

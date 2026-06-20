@@ -82,9 +82,6 @@ exclude = []
 max_cyclomatic_complexity = 10
 max_module_logical_lines = 900
 
-[tool.uv.sources]
-yggtools = { workspace = true }
-
 [dependency-groups]
 dev = [
     "bandit>=1.8",
@@ -99,5 +96,4 @@ dev = [
     "pytest-cov>=6",
     "ruff>=0.4",
     "twine>=6",
-    "yggtools",
 ]

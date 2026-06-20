@@ -10,6 +10,7 @@ import pytest
 from yggtools.repo_init.steps import (
     RepoContext,
     StepError,
+    _collect_pyproject_additions,
     step_add_dev_deps,
     step_git_commit,
     step_patch_pyproject,
@@ -121,6 +122,17 @@ class TestStepAddDevDeps:
             pytest.raises(StepError),
         ):
             step_add_dev_deps(ctx)
+
+
+class TestCollectPyprojectAdditions:
+    """Tests for _collect_pyproject_additions."""
+
+    def test_includes_code_metrics_when_yggtools_not_a_dict(self) -> None:
+        """Requirement: code_metrics section added when yggtools is int."""
+        existing: dict[str, object] = {"tool": {"yggtools": 42}}
+        additions = _collect_pyproject_additions(existing, "my_lib")
+        combined = "\n".join(additions)
+        assert "[tool.yggtools.code_metrics]" in combined
 
 
 class TestStepPatchPyproject:

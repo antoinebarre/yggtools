@@ -41,6 +41,29 @@ class _Violation:
     message: str
 
 
+def _read_metrics_section(pyproject: Path) -> dict[str, object]:
+    """Read the ``[tool.yggtools.code_metrics]`` section from pyproject.toml.
+
+    Args:
+        pyproject: Path to the pyproject.toml file.
+
+    Returns:
+        The code_metrics dict, or an empty dict if absent or malformed.
+    """
+    if not pyproject.exists():
+        return {}
+    with pyproject.open("rb") as fh:
+        data = tomllib.load(fh)
+    raw = data.get("tool", {})
+    if not isinstance(raw, dict):
+        return {}
+    ygg = raw.get("yggtools", {})
+    if not isinstance(ygg, dict):
+        return {}
+    cm = ygg.get("code_metrics", {})
+    return cm if isinstance(cm, dict) else {}
+
+
 def _load_config(project_dir: Path) -> _MetricsConfig:
     """Load metrics configuration from pyproject.toml.
 
@@ -50,18 +73,7 @@ def _load_config(project_dir: Path) -> _MetricsConfig:
     Returns:
         Populated _MetricsConfig with defaults when keys are absent.
     """
-    pyproject = project_dir / "pyproject.toml"
-    section: dict[str, object] = {}
-    if pyproject.exists():
-        with pyproject.open("rb") as fh:
-            data = tomllib.load(fh)
-        raw = data.get("tool", {})
-        if isinstance(raw, dict):
-            ygg = raw.get("yggtools", {})
-            if isinstance(ygg, dict):
-                cm = ygg.get("code_metrics", {})
-                if isinstance(cm, dict):
-                    section = cm
+    section = _read_metrics_section(project_dir / "pyproject.toml")
     raw_paths = section.get("paths", ["src", "tests"])
     raw_exclude = section.get("exclude", [])
     max_cc = section.get("max_cyclomatic_complexity", 10)
@@ -72,12 +84,12 @@ def _load_config(project_dir: Path) -> _MetricsConfig:
             for p in (raw_paths if isinstance(raw_paths, list) else [])
         ),
         exclude=tuple(raw_exclude if isinstance(raw_exclude, list) else []),
-        max_cyclomatic_complexity=int(max_cc)
-        if isinstance(max_cc, int)
-        else 10,
-        max_module_logical_lines=int(max_ll)
-        if isinstance(max_ll, int)
-        else 900,
+        max_cyclomatic_complexity=(
+            int(max_cc) if isinstance(max_cc, int) else 10
+        ),
+        max_module_logical_lines=(
+            int(max_ll) if isinstance(max_ll, int) else 900
+        ),
     )
 
 

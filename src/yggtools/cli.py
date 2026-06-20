@@ -17,7 +17,7 @@ import yggtools.quality.checks.tests
 import yggtools.quality.checks.typecheck  # noqa: F401
 from yggtools.quality.report import write_report
 from yggtools.quality.runner import registered_checks, run_all, run_one
-from yggtools.repo_init.pipeline import STEPS, STEPS_INIT
+from yggtools.repo_init.pipeline import STEPS, STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError, check_uv_available
 
@@ -261,7 +261,7 @@ def run(
 
 def _run_with_progress(
     ctx: RepoContext,
-    steps: list | None = None,
+    steps: list[PipelineStep] | None = None,
 ) -> None:
     """Execute a pipeline and print a progress line per step.
 

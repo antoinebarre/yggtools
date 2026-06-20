@@ -97,6 +97,89 @@ def step_add_dev_deps(ctx: RepoContext) -> None:
         raise StepError(msg) from exc
 
 
+def _collect_pyproject_additions(
+    existing: dict[str, object],
+    package_name: str,
+) -> list[str]:
+    """Build the list of TOML sections to append to pyproject.toml.
+
+    Each section is only included when the corresponding key is absent from
+    ``existing``, so that repeated runs are idempotent.
+
+    Args:
+        existing: Parsed content of the current pyproject.toml.
+        package_name: Normalised package name (hyphens → underscores).
+
+    Returns:
+        List of TOML section strings ready to be appended.
+    """
+    raw_tool = existing.get("tool", {})
+    tool: dict[str, object] = raw_tool if isinstance(raw_tool, dict) else {}
+    additions: list[str] = []
+
+    if "pytest" not in tool:
+        cov_opts = (
+            f'"--tb=short --cov=src/{package_name}'
+            ' --cov-report=term-missing --cov-fail-under=100"'
+        )
+        additions.append(
+            f"\n[tool.pytest.ini_options]\n"
+            f'testpaths = ["tests"]\n'
+            f"addopts = {cov_opts}\n"
+            f'pythonpath = ["src"]\n'
+            f'cache_dir = "work/.pytest_cache"\n'
+            f"\n[tool.coverage.run]\n"
+            f'data_file = "work/.coverage"\n'
+            f'source = ["src/{package_name}"]\n',
+        )
+    if "mypy" not in tool:
+        additions.append("""
+[tool.mypy]
+strict = true
+mypy_path = "src"
+cache_dir = "work/.mypy_cache"
+""")
+    if "ruff" not in tool:
+        additions.append("""
+[tool.ruff]
+cache-dir = "work/.ruff_cache"
+line-length = 79
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["TC001", "TC002", "TC003", "TC004"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+""")
+    if "flake8" not in tool:
+        additions.append("""
+[tool.flake8]
+max-line-length = 79
+max-complexity = 10
+docstring-convention = "google"
+count = true
+show-source = true
+statistics = true
+""")
+    if "bandit" not in tool:
+        additions.append("""
+[tool.bandit]
+exclude_dirs = ["tests", "work", ".venv"]
+""")
+    raw_ygg = tool.get("yggtools", {}) if isinstance(tool, dict) else {}
+    yggtools_tool = raw_ygg if isinstance(raw_ygg, dict) else {}
+    if "code_metrics" not in yggtools_tool:
+        additions.append(f"""
+[tool.yggtools.code_metrics]
+paths = ["src/{package_name}", "tests"]
+exclude = []
+max_cyclomatic_complexity = 10
+max_module_logical_lines = 900
+""")
+    return additions
+
+
 def step_patch_pyproject(ctx: RepoContext) -> None:
     """Append yggtools tool sections to the project's pyproject.toml.
 
@@ -113,75 +196,8 @@ def step_patch_pyproject(ctx: RepoContext) -> None:
     pyproject = ctx.project_dir / "pyproject.toml"
     with pyproject.open("rb") as fh:
         existing = tomllib.load(fh)
-
     package_name = ctx.project_name.replace("-", "_")
-    additions: list[str] = []
-
-    if "pytest" not in existing.get("tool", {}):
-        cov_opts = (
-            f'"--tb=short --cov=src/{package_name}'
-            ' --cov-report=term-missing --cov-fail-under=100"'
-        )
-        additions.append(
-            f"\n[tool.pytest.ini_options]\n"
-            f'testpaths = ["tests"]\n'
-            f"addopts = {cov_opts}\n"
-            f'pythonpath = ["src"]\n'
-            f'cache_dir = "work/.pytest_cache"\n'
-            f"\n[tool.coverage.run]\n"
-            f'data_file = "work/.coverage"\n'
-            f'source = ["src/{package_name}"]\n',
-        )
-
-    if "mypy" not in existing.get("tool", {}):
-        additions.append("""
-[tool.mypy]
-strict = true
-mypy_path = "src"
-cache_dir = "work/.mypy_cache"
-""")
-
-    if "ruff" not in existing.get("tool", {}):
-        additions.append("""
-[tool.ruff]
-cache-dir = "work/.ruff_cache"
-line-length = 79
-
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = ["TC001", "TC002", "TC003", "TC004"]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-""")
-
-    if "flake8" not in existing.get("tool", {}):
-        additions.append("""
-[tool.flake8]
-max-line-length = 79
-max-complexity = 10
-docstring-convention = "google"
-count = true
-show-source = true
-statistics = true
-""")
-
-    if "bandit" not in existing.get("tool", {}):
-        additions.append("""
-[tool.bandit]
-exclude_dirs = ["tests", "work", ".venv"]
-""")
-
-    yggtools_tool = existing.get("tool", {}).get("yggtools", {})
-    if "code_metrics" not in yggtools_tool:
-        additions.append(f"""
-[tool.yggtools.code_metrics]
-paths = ["src/{package_name}", "tests"]
-exclude = []
-max_cyclomatic_complexity = 10
-max_module_logical_lines = 900
-""")
-
+    additions = _collect_pyproject_additions(existing, package_name)
     if additions:
         with pyproject.open("a", encoding="utf-8") as fh:
             fh.write("\n".join(additions))

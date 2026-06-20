@@ -7,7 +7,10 @@ from unittest.mock import patch
 
 from yggtools.quality.checks.format import check_format
 from yggtools.quality.checks.lint import check_flake8, check_ruff
-from yggtools.quality.checks.metrics import check_metrics
+from yggtools.quality.checks.metrics import (
+    _read_metrics_section,
+    check_metrics,
+)
 from yggtools.quality.checks.security import (
     check_security_code,
     check_security_deps,
@@ -344,3 +347,37 @@ class TestCheckMetrics:
         )
         result = check_metrics(tmp_path)
         assert result.passed
+
+    def test_read_metrics_section_returns_empty_when_file_absent(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: _read_metrics_section returns {} when absent."""
+        assert _read_metrics_section(tmp_path / "nonexistent.toml") == {}
+
+    def test_read_metrics_section_returns_empty_when_tool_not_dict(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: _read_metrics_section returns {} when tool is int."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("tool = 42\n")
+        assert _read_metrics_section(pyproject) == {}
+
+    def test_read_metrics_section_returns_empty_when_yggtools_not_dict(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: _read_metrics_section returns {} when yggtools int."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool]\nyggtools = 99\n")
+        assert _read_metrics_section(pyproject) == {}
+
+    def test_read_metrics_section_returns_empty_when_code_metrics_not_dict(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: _read_metrics_section returns {} when metrics int."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool.yggtools]\ncode_metrics = 0\n")
+        assert _read_metrics_section(pyproject) == {}
