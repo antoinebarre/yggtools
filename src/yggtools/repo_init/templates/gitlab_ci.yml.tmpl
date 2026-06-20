@@ -25,60 +25,100 @@ stages:
   stage: static
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run format
-    - uv run yggtools run ruff
-    - uv run yggtools run flake8
+    - uv run yggtools run format --ci
+    - uv run yggtools run ruff --ci
+    - uv run yggtools run flake8 --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "lint:3.13":
   extends: .base
   stage: static
   image: python:3.13-slim
   script:
-    - uv run yggtools run format
-    - uv run yggtools run ruff
-    - uv run yggtools run flake8
+    - uv run yggtools run format --ci
+    - uv run yggtools run ruff --ci
+    - uv run yggtools run flake8 --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "typecheck:{{ python_version }}":
   extends: .base
   stage: static
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run typecheck
+    - uv run yggtools run typecheck --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "typecheck:3.13":
   extends: .base
   stage: static
   image: python:3.13-slim
   script:
-    - uv run yggtools run typecheck
+    - uv run yggtools run typecheck --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "metrics:{{ python_version }}":
   extends: .base
   stage: static
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run metrics
+    - uv run yggtools run metrics --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "metrics:3.13":
   extends: .base
   stage: static
   image: python:3.13-slim
   script:
-    - uv run yggtools run metrics
+    - uv run yggtools run metrics --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "security-code:{{ python_version }}":
   extends: .base
   stage: static
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run security-code
+    - uv run yggtools run security-code --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "security-code:3.13":
   extends: .base
   stage: static
   image: python:3.13-slim
   script:
-    - uv run yggtools run security-code
+    - uv run yggtools run security-code --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 # ── test ──────────────────────────────────────────────────────────────────────
 
@@ -87,11 +127,12 @@ stages:
   stage: test
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run tests
+    - uv run yggtools run tests --ci
   artifacts:
     when: always
     paths:
       - work/.coverage
+      - work/ci
     expire_in: 7 days
 
 "tests:3.13":
@@ -99,11 +140,12 @@ stages:
   stage: test
   image: python:3.13-slim
   script:
-    - uv run yggtools run tests
+    - uv run yggtools run tests --ci
   artifacts:
     when: always
     paths:
       - work/.coverage
+      - work/ci
     expire_in: 7 days
 
 # ── audit ─────────────────────────────────────────────────────────────────────
@@ -113,11 +155,21 @@ stages:
   stage: audit
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run security-deps
+    - uv run yggtools run security-deps --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days
 
 "security-deps:3.13":
   extends: .base
   stage: audit
   image: python:3.13-slim
   script:
-    - uv run yggtools run security-deps
+    - uv run yggtools run security-deps --ci
+  artifacts:
+    when: always
+    paths:
+      - work/ci
+    expire_in: 7 days

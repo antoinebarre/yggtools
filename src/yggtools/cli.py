@@ -15,8 +15,13 @@ import yggtools.quality.checks.metrics
 import yggtools.quality.checks.security
 import yggtools.quality.checks.tests
 import yggtools.quality.checks.typecheck  # noqa: F401
-from yggtools.quality.report import write_report
-from yggtools.quality.runner import registered_checks, run_all, run_one
+from yggtools.quality.report import write_check_reports, write_report
+from yggtools.quality.runner import (
+    CheckResult,
+    registered_checks,
+    run_all,
+    run_one,
+)
 from yggtools.repo_init.pipeline import STEPS, STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError, check_uv_available
@@ -206,6 +211,13 @@ def run(
         str | None,
         typer.Option("--path", help="Project directory (default: cwd)."),
     ] = None,
+    report_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--report-dir",
+            help="Directory for per-check CI markdown reports.",
+        ),
+    ] = None,
 ) -> None:
     """Run one or all quality checks in the current project.
 
@@ -223,40 +235,123 @@ def run(
         )
         raise typer.Exit(1)
 
-    results = (
-        run_all(project_dir)
-        if all_checks
-        else [run_one(check_name, project_dir)]  # type: ignore[arg-type]
+    results = _run_requested_checks(
+        check_name,
+        all_checks=all_checks,
+        project_dir=project_dir,
     )
+    table = _build_results_table(results, project_dir)
+    failed = sum(1 for result in results if not result.passed)
 
+    _console.print(table)
+    if ci_mode:
+        _print_ci_details(results)
+        _write_ci_reports(results, project_dir, report_dir)
+
+    if failed:
+        _console.print(f"\n[bold red]{failed} check(s) failed.[/bold red]")
+        raise typer.Exit(1)
+    _console.print("\n[bold green]All checks passed.[/bold green]")
+
+
+def _run_requested_checks(
+    check_name: str | None,
+    *,
+    all_checks: bool,
+    project_dir: Path,
+) -> list[CheckResult]:
+    """Run the requested checks."""
+    if all_checks:
+        return run_all(project_dir)
+    return [run_one(check_name, project_dir)]  # type: ignore[arg-type]
+
+
+def _build_results_table(
+    results: list[CheckResult],
+    project_dir: Path,
+) -> Table:
+    """Build the Rich table for check results."""
     table = Table(
         title=f"yggtools run — {project_dir.name}",
         show_header=True,
     )
     table.add_column("Check", style="bold")
     table.add_column("Status", justify="center")
+    table.add_column("Duration", justify="right")
+    table.add_column("Artifacts", justify="right")
     table.add_column("Detail", style="dim")
 
-    failed = 0
     for result in results:
         status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
-        table.add_row(result.name, status, result.detail)
-        if not result.passed:
-            failed += 1
-
-    _console.print(table)
-
-    if ci_mode:
-        write_report(
-            results,
-            project_dir,
-            project_dir / "work" / "report.md",
+        duration = (
+            f"{result.duration_seconds:.2f}s"
+            if result.duration_seconds is not None
+            else "-"
         )
+        table.add_row(
+            result.name,
+            status,
+            duration,
+            str(len(result.artifacts)),
+            result.detail,
+        )
+    return table
 
-    if failed:
-        _console.print(f"\n[bold red]{failed} check(s) failed.[/bold red]")
-        raise typer.Exit(1)
-    _console.print("\n[bold green]All checks passed.[/bold green]")
+
+def _resolve_report_dir(project_dir: Path, report_dir: str | None) -> Path:
+    """Resolve the per-check report directory."""
+    if report_dir is None:
+        return project_dir / "work" / "ci" / "reports"
+    requested_report_dir = Path(report_dir)
+    if requested_report_dir.is_absolute():
+        return requested_report_dir
+    return project_dir / requested_report_dir
+
+
+def _write_ci_reports(
+    results: list[CheckResult],
+    project_dir: Path,
+    report_dir: str | None,
+) -> None:
+    """Write aggregate and per-check CI reports."""
+    output_dir = _resolve_report_dir(project_dir, report_dir)
+    aggregate = project_dir / "work" / "report.md"
+    write_report(results, project_dir, aggregate)
+    report_paths = write_check_reports(results, project_dir, output_dir)
+    _console.print()
+    _console.print("[bold]CI reports[/bold]")
+    _console.print(f"  aggregate: {aggregate}")
+    for report_path in report_paths:
+        _console.print(f"  step: {report_path}")
+
+
+def _tail(text: str, *, max_lines: int = 20) -> str:
+    """Return the last lines of captured output for console display."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    return "\n".join(lines[-max_lines:])
+
+
+def _print_ci_details(results: list[CheckResult]) -> None:
+    """Print detailed CI information for each result."""
+    _console.print()
+    _console.print("[bold]CI detail[/bold]")
+    for result in results:
+        _console.print(f"\n[bold]{result.name}[/bold]")
+        if result.command:
+            _console.print(f"  command: {' '.join(result.command)}")
+        _console.print(f"  detail: {result.detail}")
+        if result.artifacts:
+            _console.print("  artifacts:")
+            for artifact in result.artifacts:
+                _console.print(f"    - {artifact}")
+        stdout = _tail(result.stdout)
+        stderr = _tail(result.stderr)
+        if stdout:
+            _console.print("  stdout:")
+            _console.print(stdout)
+        if stderr:
+            _console.print("  stderr:")
+            _console.print(stderr)
 
 
 def _run_with_progress(

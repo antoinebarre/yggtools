@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +11,7 @@ from yggtools.quality.checks.format import check_format
 from yggtools.quality.checks.lint import check_flake8, check_ruff
 from yggtools.quality.checks.metrics import (
     _read_metrics_section,
+    _relative_to,
     check_metrics,
 )
 from yggtools.quality.checks.security import (
@@ -395,12 +398,50 @@ class TestCheckMetrics:
         result = check_metrics(tmp_path)
         assert result.passed
 
+    def test_writes_checksum_manifest_for_configured_files(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: metrics must checksum all configured files."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "module.py").write_text("x = 1\n", encoding="utf-8")
+        (src / "data.txt").write_text("trace me\n", encoding="utf-8")
+        cache = src / "__pycache__"
+        cache.mkdir()
+        (cache / "module.cpython-312.pyc").write_bytes(b"cache")
+        self._write_pyproject(tmp_path)
+
+        result = check_metrics(tmp_path)
+
+        manifest = tmp_path / "work" / "ci" / "artifacts" / "metrics"
+        manifest_json = manifest / "files-manifest.json"
+        manifest_sha = manifest / "files-manifest.sha256"
+        payload = json.loads(manifest_json.read_text(encoding="utf-8"))
+        paths = {record["path"] for record in payload}
+        assert result.passed
+        assert paths == {"src/data.txt", "src/module.py"}
+        assert all(record["sha256"] for record in payload)
+        digest = hashlib.sha256(
+            manifest_json.read_text(encoding="utf-8").encode("utf-8"),
+        ).hexdigest()
+        assert manifest_sha.read_text(encoding="utf-8").startswith(digest)
+        assert manifest_json in result.artifacts
+
     def test_read_metrics_section_returns_empty_when_file_absent(
         self,
         tmp_path: Path,
     ) -> None:
         """Requirement: _read_metrics_section returns {} when absent."""
         assert _read_metrics_section(tmp_path / "nonexistent.toml") == {}
+
+    def test_relative_to_returns_absolute_external_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: metrics path helper must handle external paths."""
+        external = Path("/outside/project.py")
+        assert _relative_to(external, tmp_path) == str(external)
 
     def test_read_metrics_section_returns_empty_when_tool_not_dict(
         self,

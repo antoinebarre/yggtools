@@ -20,8 +20,9 @@ def check_format(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with the count of files that would be reformatted.
     """
+    args = ["run", "ruff", "format", "--check", "src", "tests"]
     result = run_uv(
-        ["run", "ruff", "format", "--check", "src", "tests"],
+        args,
         cwd=project_dir,
         capture=True,
     )
@@ -30,6 +31,9 @@ def check_format(project_dir: Path) -> CheckResult:
             name="format",
             passed=True,
             detail="0 file(s) to reformat",
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
         )
     lines = (result.stdout + result.stderr).splitlines()
     count = sum(1 for ln in lines if "would reformat" in ln)
@@ -37,4 +41,8 @@ def check_format(project_dir: Path) -> CheckResult:
         name="format",
         passed=False,
         detail=f"{count} file(s) to reformat",
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+        metadata={"files_to_reformat": count},
     )

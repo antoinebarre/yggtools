@@ -20,8 +20,9 @@ def check_security_code(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with issue count or confirmation of no issues.
     """
+    args = ["run", "bandit", "-r", "src", "-q"]
     result = run_uv(
-        ["run", "bandit", "-r", "src", "-q"],
+        args,
         cwd=project_dir,
         capture=True,
     )
@@ -31,6 +32,9 @@ def check_security_code(project_dir: Path) -> CheckResult:
             name="security-code",
             passed=True,
             detail="0 issue(s)",
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
         )
     lines = [ln for ln in output.splitlines() if ln.startswith(">>")]
     count = len(lines)
@@ -38,6 +42,10 @@ def check_security_code(project_dir: Path) -> CheckResult:
         name="security-code",
         passed=False,
         detail=f"{count} issue(s)",
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+        metadata={"issue_count": count},
     )
 
 
@@ -54,8 +62,9 @@ def check_security_deps(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with vulnerability count or confirmation of no issues.
     """
+    args = ["run", "pip-audit", "--progress-spinner=off"]
     result = run_uv(
-        ["run", "pip-audit", "--progress-spinner=off"],
+        args,
         cwd=project_dir,
         capture=True,
     )
@@ -65,6 +74,9 @@ def check_security_deps(project_dir: Path) -> CheckResult:
             name="security-deps",
             passed=True,
             detail="No vulnerabilities found",
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
         )
     lines = [ln for ln in output.splitlines() if "vulnerability" in ln.lower()]
     count = len(lines) or 1
@@ -72,4 +84,8 @@ def check_security_deps(project_dir: Path) -> CheckResult:
         name="security-deps",
         passed=False,
         detail=f"{count} vulnerability(ies) found",
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+        metadata={"vulnerability_count": count},
     )

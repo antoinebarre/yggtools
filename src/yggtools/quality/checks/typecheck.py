@@ -21,8 +21,9 @@ def check_typecheck(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with a success message or the error count.
     """
+    args = ["run", "mypy", "src", "tests"]
     result = run_uv(
-        ["run", "mypy", "src", "tests"],
+        args,
         cwd=project_dir,
         capture=True,
     )
@@ -32,6 +33,9 @@ def check_typecheck(project_dir: Path) -> CheckResult:
             name="typecheck",
             passed=True,
             detail=output or "Success",
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
         )
     lines = [ln for ln in output.splitlines() if ": error:" in ln]
     count = len(lines)
@@ -39,4 +43,8 @@ def check_typecheck(project_dir: Path) -> CheckResult:
         name="typecheck",
         passed=False,
         detail=f"{count} error(s)",
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+        metadata={"error_count": count},
     )

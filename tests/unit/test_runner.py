@@ -114,6 +114,36 @@ def test_run_one_calls_registered_function(tmp_path: Path) -> None:
         _REGISTRY.update(original)
 
 
+def test_run_one_preserves_existing_duration(tmp_path: Path) -> None:
+    """Requirement: run_one must not overwrite check-provided duration."""
+    original = dict(_REGISTRY)
+    _REGISTRY.clear()
+    try:
+
+        @register("_timed")
+        def _timed(project_dir: Path) -> CheckResult:
+            """Timed check stub.
+
+            Args:
+                project_dir: Unused.
+
+            Returns:
+                CheckResult with a precomputed duration.
+            """
+            return CheckResult(
+                name="_timed",
+                passed=True,
+                detail="ok",
+                duration_seconds=12.5,
+            )
+
+        result = run_one("_timed", tmp_path)
+        assert result.duration_seconds == 12.5
+    finally:
+        _REGISTRY.clear()
+        _REGISTRY.update(original)
+
+
 def test_run_one_raises_on_unknown_check(tmp_path: Path) -> None:
     """Requirement: run_one must raise KeyError for unregistered check name."""
     with pytest.raises(KeyError, match="Unknown check"):

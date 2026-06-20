@@ -25,11 +25,18 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: Format check
-        run: uv run yggtools run format
+        run: uv run yggtools run format --ci
       - name: Ruff
-        run: uv run yggtools run ruff
+        run: uv run yggtools run ruff --ci
       - name: Flake8
-        run: uv run yggtools run flake8
+        run: uv run yggtools run flake8 --ci
+      - name: Upload CI reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-lint-py${{ matrix.python-version }}
+          path: work/ci
+          if-no-files-found: ignore
 
   typecheck:
     name: Type check (Python ${{ matrix.python-version }})
@@ -46,7 +53,14 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: Mypy
-        run: uv run yggtools run typecheck
+        run: uv run yggtools run typecheck --ci
+      - name: Upload CI reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-typecheck-py${{ matrix.python-version }}
+          path: work/ci
+          if-no-files-found: ignore
 
   metrics:
     name: Metrics (Python ${{ matrix.python-version }})
@@ -63,7 +77,14 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: Code metrics
-        run: uv run yggtools run metrics
+        run: uv run yggtools run metrics --ci
+      - name: Upload CI reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-metrics-py${{ matrix.python-version }}
+          path: work/ci
+          if-no-files-found: ignore
 
   security-code:
     name: Security — code (Python ${{ matrix.python-version }})
@@ -80,7 +101,14 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: Bandit
-        run: uv run yggtools run security-code
+        run: uv run yggtools run security-code --ci
+      - name: Upload CI reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-security-code-py${{ matrix.python-version }}
+          path: work/ci
+          if-no-files-found: ignore
 
   tests:
     name: Tests (Python ${{ matrix.python-version }})
@@ -98,13 +126,20 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: Pytest + coverage
-        run: uv run yggtools run tests
+        run: uv run yggtools run tests --ci
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-py${{ matrix.python-version }}
           path: work/.coverage
+          if-no-files-found: ignore
+      - name: Upload CI reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-tests-py${{ matrix.python-version }}
+          path: work/ci
           if-no-files-found: ignore
 
   security-deps:
@@ -123,4 +158,11 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: pip-audit
-        run: uv run yggtools run security-deps
+        run: uv run yggtools run security-deps --ci
+      - name: Upload CI reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-security-deps-py${{ matrix.python-version }}
+          path: work/ci
+          if-no-files-found: ignore

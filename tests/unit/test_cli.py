@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from yggtools.cli import _run_with_progress, app
+from yggtools.cli import _print_ci_details, _run_with_progress, app
 from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
 from yggtools.repo_init.pipeline import STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
@@ -299,3 +299,103 @@ class TestRun:
             _REGISTRY.clear()
             _REGISTRY.update(original)
         assert (tmp_path / "work" / "report.md").exists()
+
+    def test_ci_mode_writes_per_check_report(self, tmp_path: Path) -> None:
+        """Requirement: run --ci must write one markdown report per check."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["dummy"] = cast(
+            "CheckFn",
+            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
+        )
+        try:
+            _runner.invoke(
+                app,
+                ["run", "dummy", "--ci", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert (tmp_path / "work" / "ci" / "reports" / "dummy.md").exists()
+
+    def test_ci_report_dir_is_relative_to_project(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: relative --report-dir must be under project path."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["dummy"] = cast(
+            "CheckFn",
+            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
+        )
+        try:
+            _runner.invoke(
+                app,
+                [
+                    "run",
+                    "dummy",
+                    "--ci",
+                    "--report-dir",
+                    "custom-reports",
+                    "--path",
+                    str(tmp_path),
+                ],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert (tmp_path / "custom-reports" / "dummy.md").exists()
+
+    def test_ci_report_dir_accepts_absolute_path(self, tmp_path: Path) -> None:
+        """Requirement: absolute --report-dir must be used unchanged."""
+        output_dir = tmp_path / "absolute-reports"
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["dummy"] = cast(
+            "CheckFn",
+            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
+        )
+        try:
+            _runner.invoke(
+                app,
+                [
+                    "run",
+                    "dummy",
+                    "--ci",
+                    "--report-dir",
+                    str(output_dir),
+                    "--path",
+                    str(tmp_path),
+                ],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert (output_dir / "dummy.md").exists()
+
+    def test_print_ci_details_includes_rich_result_fields(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: CI detail output must include captured fields."""
+        result = CheckResult(
+            name="dummy",
+            passed=True,
+            detail="ok",
+            command=("uv", "run", "dummy"),
+            stdout="line 1\nline 2",
+            stderr="warning",
+            artifacts=(tmp_path / "artifact.md",),
+        )
+        with patch("yggtools.cli._console") as console:
+            _print_ci_details([result])
+        printed = "\n".join(
+            str(call.args[0])
+            for call in console.print.call_args_list
+            if call.args
+        )
+        assert "uv run dummy" in printed
+        assert "artifact.md" in printed
+        assert "line 2" in printed
+        assert "warning" in printed

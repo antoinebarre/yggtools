@@ -56,13 +56,28 @@ def check_tests(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with a compact summary combining pass counts and coverage.
     """
+    args = ["run", "pytest"]
     result = run_uv(
-        ["run", "pytest"],
+        args,
         cwd=project_dir,
         capture=True,
     )
     output = (result.stdout + result.stderr).strip()
     summary = _parse_summary(output)
     if result.returncode == 0:
-        return CheckResult(name="tests", passed=True, detail=summary)
-    return CheckResult(name="tests", passed=False, detail=summary)
+        return CheckResult(
+            name="tests",
+            passed=True,
+            detail=summary,
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+    return CheckResult(
+        name="tests",
+        passed=False,
+        detail=summary,
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )

@@ -20,13 +20,21 @@ def check_ruff(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with the count of ruff errors found.
     """
+    args = ["run", "ruff", "check", "src", "tests"]
     result = run_uv(
-        ["run", "ruff", "check", "src", "tests"],
+        args,
         cwd=project_dir,
         capture=True,
     )
     if result.returncode == 0:
-        return CheckResult(name="ruff", passed=True, detail="0 error(s)")
+        return CheckResult(
+            name="ruff",
+            passed=True,
+            detail="0 error(s)",
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
     lines = (result.stdout + result.stderr).splitlines()
     errors = [ln for ln in lines if ln and not ln.startswith("Found")]
     count = len(errors)
@@ -35,6 +43,10 @@ def check_ruff(project_dir: Path) -> CheckResult:
         name="ruff",
         passed=False,
         detail=f"{count} error(s) — {first}" if first else f"{count} error(s)",
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+        metadata={"error_count": count, "first_error": first},
     )
 
 
@@ -50,13 +62,21 @@ def check_flake8(project_dir: Path) -> CheckResult:
     Returns:
         CheckResult with the count of flake8 violations found.
     """
+    args = ["run", "flake8", "src", "tests"]
     result = run_uv(
-        ["run", "flake8", "src", "tests"],
+        args,
         cwd=project_dir,
         capture=True,
     )
     if result.returncode == 0:
-        return CheckResult(name="flake8", passed=True, detail="0 violation(s)")
+        return CheckResult(
+            name="flake8",
+            passed=True,
+            detail="0 violation(s)",
+            command=("uv", *args),
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
     lines = [
         ln for ln in (result.stdout + result.stderr).splitlines() if ln.strip()
     ]
@@ -64,4 +84,8 @@ def check_flake8(project_dir: Path) -> CheckResult:
         name="flake8",
         passed=False,
         detail=f"{len(lines)} violation(s)",
+        command=("uv", *args),
+        stdout=result.stdout,
+        stderr=result.stderr,
+        metadata={"violation_count": len(lines), "violations": lines},
     )

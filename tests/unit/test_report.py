@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yggtools.quality.report import write_report
+from yggtools.quality.report import (
+    write_check_report,
+    write_check_reports,
+    write_report,
+)
 from yggtools.quality.runner import CheckResult
 
 
@@ -63,3 +67,36 @@ def test_write_report_creates_parent_directories(tmp_path: Path) -> None:
     output = tmp_path / "deeply" / "nested" / "report.md"
     write_report(_results(), tmp_path, output)
     assert output.exists()
+
+
+def test_write_check_report_includes_detailed_fields(tmp_path: Path) -> None:
+    """Requirement: per-check report must include command and output."""
+    output = tmp_path / "work" / "ci" / "reports" / "ruff.md"
+    result = CheckResult(
+        name="ruff",
+        passed=False,
+        detail="1 error(s)",
+        command=("uv", "run", "ruff", "check"),
+        stdout="src/pkg.py:1:1: E999 boom",
+        stderr="warning",
+        metadata={"error_count": 1, "nested": {"count": 1}},
+        artifacts=(Path("/outside/artifact.txt"),),
+    )
+    write_check_report(result, tmp_path, output)
+    content = output.read_text()
+    assert "CI step - ruff" in content
+    assert "uv run ruff check" in content
+    assert "src/pkg.py" in content
+    assert "artifact.txt" in content
+    assert "warning" in content
+    assert '"count": 1' in content
+
+
+def test_write_check_reports_creates_one_file_per_result(
+    tmp_path: Path,
+) -> None:
+    """Requirement: per-check reports must be generated for all results."""
+    output_dir = tmp_path / "work" / "ci" / "reports"
+    paths = write_check_reports(_results(), tmp_path, output_dir)
+    assert paths == [output_dir / "format.md", output_dir / "ruff.md"]
+    assert all(path.exists() for path in paths)
