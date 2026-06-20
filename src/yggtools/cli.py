@@ -7,7 +7,6 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
 import yggtools.quality.checks.format
 import yggtools.quality.checks.lint
@@ -15,7 +14,7 @@ import yggtools.quality.checks.metrics
 import yggtools.quality.checks.security
 import yggtools.quality.checks.tests
 import yggtools.quality.checks.typecheck  # noqa: F401
-from yggtools.quality.report import write_check_reports, write_report
+from yggtools.quality.report import write_check_json_reports
 from yggtools.quality.runner import (
     CheckResult,
     registered_checks,
@@ -215,13 +214,13 @@ def run(
         str | None,
         typer.Option(
             "--report-dir",
-            help="Directory for per-check CI markdown reports.",
+            help="Directory for per-check CI JSON contracts.",
         ),
     ] = None,
 ) -> None:
     """Run one or all quality checks in the current project.
 
-    In CI mode (``--ci``), writes a Markdown report to ``work/report.md``
+    In CI mode (``--ci``), writes JSON contracts to ``work/ci/results``
     and exits with code 1 if any check fails.
     """
     project_dir = Path(path) if path else Path.cwd()
@@ -240,13 +239,12 @@ def run(
         all_checks=all_checks,
         project_dir=project_dir,
     )
-    table = _build_results_table(results, project_dir)
+    json_reports = (
+        _write_ci_reports(results, project_dir, report_dir) if ci_mode else {}
+    )
     failed = sum(1 for result in results if not result.passed)
 
-    _console.print(table)
-    if ci_mode:
-        _print_ci_details(results)
-        _write_ci_reports(results, project_dir, report_dir)
+    _print_run_summary(results, project_dir, json_reports)
 
     if failed:
         _console.print(f"\n[bold red]{failed} check(s) failed.[/bold red]")
@@ -266,42 +264,59 @@ def _run_requested_checks(
     return [run_one(check_name, project_dir)]  # type: ignore[arg-type]
 
 
-def _build_results_table(
+def _print_run_summary(
     results: list[CheckResult],
     project_dir: Path,
-) -> Table:
-    """Build the Rich table for check results."""
-    table = Table(
-        title=f"yggtools run — {project_dir.name}",
-        show_header=True,
-    )
-    table.add_column("Check", style="bold")
-    table.add_column("Status", justify="center")
-    table.add_column("Duration", justify="right")
-    table.add_column("Artifacts", justify="right")
-    table.add_column("Detail", style="dim")
-
+    json_reports: dict[str, tuple[Path, str]],
+) -> None:
+    """Print a compact summary for local and CI runs."""
+    _console.print(f"[bold]yggtools run[/bold] {project_dir.name}")
     for result in results:
-        status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
-        duration = (
-            f"{result.duration_seconds:.2f}s"
-            if result.duration_seconds is not None
-            else "-"
-        )
-        table.add_row(
-            result.name,
-            status,
-            duration,
-            str(len(result.artifacts)),
-            result.detail,
-        )
-    return table
+        _console.print(_result_summary_line(result))
+        if result.name in json_reports:
+            path, digest = json_reports[result.name]
+            _console.print(
+                f"  json: {_relative_to_project(path, project_dir)}",
+            )
+            _console.print(f"  sha256: {digest}")
+        if not result.passed:
+            _print_failure_context(result)
+
+
+def _result_summary_line(result: CheckResult) -> str:
+    """Build the concise console line for one result."""
+    status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+    duration = (
+        f"{result.duration_seconds:.2f}s"
+        if result.duration_seconds is not None
+        else "-"
+    )
+    return (
+        f"- {status} [bold]{result.name}[/bold] ({duration}) - {result.detail}"
+    )
+
+
+def _print_failure_context(result: CheckResult) -> None:
+    """Print short failure context without flooding CI logs."""
+    context = _tail(result.stderr or result.stdout, max_lines=8)
+    if context:
+        _console.print("  context:")
+        for line in context.splitlines():
+            _console.print(f"    {line}")
+
+
+def _relative_to_project(path: Path, project_dir: Path) -> str:
+    """Return a display path relative to the project when possible."""
+    try:
+        return str(path.relative_to(project_dir))
+    except ValueError:
+        return str(path)
 
 
 def _resolve_report_dir(project_dir: Path, report_dir: str | None) -> Path:
     """Resolve the per-check report directory."""
     if report_dir is None:
-        return project_dir / "work" / "ci" / "reports"
+        return project_dir / "work" / "ci" / "results"
     requested_report_dir = Path(report_dir)
     if requested_report_dir.is_absolute():
         return requested_report_dir
@@ -312,46 +327,16 @@ def _write_ci_reports(
     results: list[CheckResult],
     project_dir: Path,
     report_dir: str | None,
-) -> None:
-    """Write aggregate and per-check CI reports."""
+) -> dict[str, tuple[Path, str]]:
+    """Write per-check CI JSON contracts."""
     output_dir = _resolve_report_dir(project_dir, report_dir)
-    aggregate = project_dir / "work" / "report.md"
-    write_report(results, project_dir, aggregate)
-    report_paths = write_check_reports(results, project_dir, output_dir)
-    _console.print()
-    _console.print("[bold]CI reports[/bold]")
-    _console.print(f"  aggregate: {aggregate}")
-    for report_path in report_paths:
-        _console.print(f"  step: {report_path}")
+    return write_check_json_reports(results, project_dir, output_dir)
 
 
 def _tail(text: str, *, max_lines: int = 20) -> str:
     """Return the last lines of captured output for console display."""
     lines = [line for line in text.splitlines() if line.strip()]
     return "\n".join(lines[-max_lines:])
-
-
-def _print_ci_details(results: list[CheckResult]) -> None:
-    """Print detailed CI information for each result."""
-    _console.print()
-    _console.print("[bold]CI detail[/bold]")
-    for result in results:
-        _console.print(f"\n[bold]{result.name}[/bold]")
-        if result.command:
-            _console.print(f"  command: {' '.join(result.command)}")
-        _console.print(f"  detail: {result.detail}")
-        if result.artifacts:
-            _console.print("  artifacts:")
-            for artifact in result.artifacts:
-                _console.print(f"    - {artifact}")
-        stdout = _tail(result.stdout)
-        stderr = _tail(result.stderr)
-        if stdout:
-            _console.print("  stdout:")
-            _console.print(stdout)
-        if stderr:
-            _console.print("  stderr:")
-            _console.print(stderr)
 
 
 def _run_with_progress(

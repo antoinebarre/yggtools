@@ -391,9 +391,9 @@ def _metric_detail(summary: dict[str, object], violations: int) -> str:
     status = "pass" if violations == 0 else f"{violations} violation(s)"
     return (
         f"{status}; "
-        f"{summary['python_files_parsed']} file(s), "
-        f"{summary['total_logical_lines']} logical line(s), "
-        f"{summary['total_functions']} function(s), "
+        f"{summary['python_files_parsed']} files, "
+        f"{summary['total_logical_lines']} LL, "
+        f"{summary['total_functions']} fn, "
         f"max CC {summary['max_cyclomatic_complexity']}"
     )
 
