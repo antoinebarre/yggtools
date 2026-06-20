@@ -8,7 +8,15 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from yggtools.cli import _print_run_summary, _run_with_progress, app
+from yggtools.cli import (
+    _collect_objective_rows,
+    _is_int,
+    _print_objectives_table,
+    _print_run_summary,
+    _run_with_progress,
+    app,
+)
+from yggtools.quality.pipeline import PipelineResult
 from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
 from yggtools.repo_init.pipeline import STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
@@ -175,6 +183,196 @@ class TestPipelineCommand:
             _REGISTRY.update(original)
         assert "Linters" in result.output
         assert "format" in result.output
+
+    def test_pipeline_shows_objectives_table(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: pipeline must show objectives table."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("format"),
+        )
+        _REGISTRY["tests"] = cast(
+            "CheckFn",
+            lambda _p: CheckResult(
+                name="tests",
+                passed=True,
+                detail="10 passed · coverage 100.00%",
+                duration_seconds=0.1,
+            ),
+        )
+        _REGISTRY["metrics"] = cast(
+            "CheckFn",
+            lambda _p: CheckResult(
+                name="metrics",
+                passed=True,
+                detail="pass",
+                duration_seconds=0.1,
+                metadata={
+                    "summary": {
+                        "max_cyclomatic_complexity": 5,
+                        "violations": 0,
+                    },
+                    "thresholds": {
+                        "max_cyclomatic_complexity": 10,
+                    },
+                },
+            ),
+        )
+        try:
+            result = _runner.invoke(
+                app,
+                ["pipeline", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert "Objectives" in result.output
+        assert "100.00%" in result.output
+
+
+class TestObjectives:
+    """Tests for _collect_objective_rows and helpers."""
+
+    def test_lint_objectives(self) -> None:
+        """Requirement: lint checks produce objective rows."""
+        results = {
+            "format": _dummy_result("format"),
+            "ruff": _dummy_result("ruff"),
+            "flake8": _dummy_result("flake8"),
+        }
+        rows = _collect_objective_rows(results)
+        labels = [r[0] for r in rows]
+        assert "Formatting" in labels
+        assert "Ruff errors" in labels
+        assert "Flake8 violations" in labels
+
+    def test_typecheck_objective(self) -> None:
+        """Requirement: typecheck produces error count row."""
+        results = {
+            "typecheck": CheckResult(
+                name="typecheck",
+                passed=False,
+                detail="3 error(s)",
+                metadata={"error_count": 3},
+            ),
+        }
+        rows = _collect_objective_rows(results)
+        assert any(r[0] == "Type errors" and r[1] == "3" for r in rows)
+
+    def test_metrics_objectives(self) -> None:
+        """Requirement: metrics produces CC and violations rows."""
+        results = {
+            "metrics": CheckResult(
+                name="metrics",
+                passed=True,
+                detail="pass",
+                metadata={
+                    "summary": {
+                        "max_cyclomatic_complexity": 7,
+                        "violations": 0,
+                    },
+                    "thresholds": {
+                        "max_cyclomatic_complexity": 10,
+                    },
+                },
+            ),
+        }
+        rows = _collect_objective_rows(results)
+        labels = [r[0] for r in rows]
+        assert "Max cyclomatic complexity" in labels
+        assert "Metrics violations" in labels
+
+    def test_metrics_non_int_cc_uses_passed(self) -> None:
+        """Requirement: non-int CC falls back to check passed."""
+        results = {
+            "metrics": CheckResult(
+                name="metrics",
+                passed=True,
+                detail="pass",
+                metadata={
+                    "summary": {
+                        "max_cyclomatic_complexity": "?",
+                        "violations": 0,
+                    },
+                    "thresholds": {
+                        "max_cyclomatic_complexity": "?",
+                    },
+                },
+            ),
+        }
+        rows = _collect_objective_rows(results)
+        cc_row = next(r for r in rows if r[0] == "Max cyclomatic complexity")
+        assert cc_row[3] is True
+
+    def test_security_objectives(self) -> None:
+        """Requirement: security checks produce objective rows."""
+        results = {
+            "security-code": _dummy_result("security-code"),
+            "security-deps": _dummy_result("security-deps"),
+        }
+        rows = _collect_objective_rows(results)
+        labels = [r[0] for r in rows]
+        assert "Security issues" in labels
+        assert "Dependency vulns" in labels
+
+    def test_coverage_objective(self) -> None:
+        """Requirement: test coverage appears in objectives."""
+        results = {
+            "tests": CheckResult(
+                name="tests",
+                passed=True,
+                detail="10 passed · coverage 100.00%",
+            ),
+        }
+        rows = _collect_objective_rows(results)
+        labels = [r[0] for r in rows]
+        assert "Test coverage" in labels
+        assert "Test suite" in labels
+        cov_row = next(r for r in rows if r[0] == "Test coverage")
+        assert cov_row[1] == "100.00%"
+
+    def test_coverage_objective_no_coverage_line(self) -> None:
+        """Requirement: objectives work without coverage info."""
+        results = {
+            "tests": CheckResult(
+                name="tests",
+                passed=True,
+                detail="10 passed",
+            ),
+        }
+        rows = _collect_objective_rows(results)
+        labels = [r[0] for r in rows]
+        assert "Test coverage" not in labels
+        assert "Test suite" in labels
+
+    def test_empty_results(self) -> None:
+        """Requirement: empty results produce no rows."""
+        assert _collect_objective_rows({}) == []
+
+    def test_print_objectives_skips_when_no_rows(self) -> None:
+        """Requirement: objectives table is skipped when empty."""
+        empty = PipelineResult(
+            results=(),
+            duration_seconds=0.0,
+            passed=True,
+        )
+        with patch("yggtools.cli._console") as console:
+            _print_objectives_table(empty)
+        console.print.assert_not_called()
+
+    def test_is_int_valid(self) -> None:
+        """Requirement: _is_int returns True for ints."""
+        assert _is_int(1, 2, 3)
+        assert _is_int("5", "10")
+
+    def test_is_int_invalid(self) -> None:
+        """Requirement: _is_int returns False for non-ints."""
+        assert not _is_int("?", 5)
+        assert not _is_int(None)
 
 
 class TestInitRepo:

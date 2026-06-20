@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated
@@ -79,6 +80,7 @@ def pipeline_cmd(
     report = write_pipeline_artifacts(result, project_dir, output_dir)
 
     _print_pipeline_dashboard(result, project_dir)
+    _print_objectives_table(result)
     _print_artifact_table(report, project_dir)
     _print_failure_details(result)
 
@@ -174,6 +176,197 @@ def _print_pipeline_dashboard(
             border_style="green" if result.passed else "red",
         ),
     )
+
+
+def _print_objectives_table(result: PipelineResult) -> None:
+    """Print a summary table of quality objectives and their status.
+
+    Extracts key metrics from check results: lint error counts,
+    type errors, complexity thresholds, coverage, and security
+    findings.
+
+    Args:
+        result: Pipeline execution result.
+    """
+    results_by_name = {r.name: r for r in result.results}
+    rows = _collect_objective_rows(results_by_name)
+    if not rows:
+        return
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        show_lines=False,
+    )
+    table.add_column("Objective")
+    table.add_column("Value", justify="right")
+    table.add_column("Target", justify="right")
+    table.add_column("Status", justify="center")
+
+    for label, value, target, passed in rows:
+        status = "[green]OK[/green]" if passed else "[red]KO[/red]"
+        table.add_row(label, value, target, status)
+
+    _console.print()
+    _console.print(
+        Panel(table, title="[bold]Objectives[/bold]", border_style="dim"),
+    )
+
+
+def _collect_objective_rows(
+    results: dict[str, CheckResult],
+) -> list[tuple[str, str, str, bool]]:
+    """Build rows for the objectives table from check results.
+
+    Args:
+        results: Check results keyed by name.
+
+    Returns:
+        List of (label, value, target, passed) tuples.
+    """
+    rows: list[tuple[str, str, str, bool]] = []
+    _add_lint_objectives(results, rows)
+    _add_typecheck_objective(results, rows)
+    _add_metrics_objectives(results, rows)
+    _add_security_objectives(results, rows)
+    _add_coverage_objective(results, rows)
+    return rows
+
+
+def _add_lint_objectives(
+    results: dict[str, CheckResult],
+    rows: list[tuple[str, str, str, bool]],
+) -> None:
+    """Add lint-related objective rows.
+
+    Args:
+        results: Check results keyed by name.
+        rows: Accumulator list for objective rows.
+    """
+    for name, label in [
+        ("format", "Formatting"),
+        ("ruff", "Ruff errors"),
+        ("flake8", "Flake8 violations"),
+    ]:
+        if name in results:
+            r = results[name]
+            rows.append((label, r.detail, "0", r.passed))
+
+
+def _add_typecheck_objective(
+    results: dict[str, CheckResult],
+    rows: list[tuple[str, str, str, bool]],
+) -> None:
+    """Add the type checking objective row.
+
+    Args:
+        results: Check results keyed by name.
+        rows: Accumulator list for objective rows.
+    """
+    if "typecheck" in results:
+        r = results["typecheck"]
+        count = r.metadata.get("error_count", 0)
+        rows.append(("Type errors", str(count), "0", r.passed))
+
+
+def _add_metrics_objectives(
+    results: dict[str, CheckResult],
+    rows: list[tuple[str, str, str, bool]],
+) -> None:
+    """Add metrics objective rows for CC and module size.
+
+    Args:
+        results: Check results keyed by name.
+        rows: Accumulator list for objective rows.
+    """
+    if "metrics" not in results:
+        return
+    r = results["metrics"]
+    summary = r.metadata.get("summary")
+    thresholds = r.metadata.get("thresholds")
+    if isinstance(summary, dict) and isinstance(thresholds, dict):
+        max_cc = summary.get("max_cyclomatic_complexity", "?")
+        cc_limit = thresholds.get("max_cyclomatic_complexity", "?")
+        rows.append(
+            (
+                "Max cyclomatic complexity",
+                str(max_cc),
+                f"≤ {cc_limit}",
+                int(str(max_cc)) <= int(str(cc_limit))
+                if _is_int(max_cc, cc_limit)
+                else r.passed,
+            )
+        )
+        violations = summary.get("violations", 0)
+        rows.append(
+            (
+                "Metrics violations",
+                str(violations),
+                "0",
+                violations == 0,
+            )
+        )
+
+
+def _add_security_objectives(
+    results: dict[str, CheckResult],
+    rows: list[tuple[str, str, str, bool]],
+) -> None:
+    """Add security objective rows.
+
+    Args:
+        results: Check results keyed by name.
+        rows: Accumulator list for objective rows.
+    """
+    if "security-code" in results:
+        r = results["security-code"]
+        rows.append(("Security issues", r.detail, "0", r.passed))
+    if "security-deps" in results:
+        r = results["security-deps"]
+        rows.append(("Dependency vulns", r.detail, "0", r.passed))
+
+
+def _add_coverage_objective(
+    results: dict[str, CheckResult],
+    rows: list[tuple[str, str, str, bool]],
+) -> None:
+    """Add the test coverage objective row.
+
+    Args:
+        results: Check results keyed by name.
+        rows: Accumulator list for objective rows.
+    """
+    if "tests" not in results:
+        return
+    r = results["tests"]
+    cov_match = re.search(r"coverage\s+([\d.]+%)", r.detail)
+    if cov_match:
+        rows.append(
+            (
+                "Test coverage",
+                cov_match.group(1),
+                "100%",
+                r.passed,
+            )
+        )
+    rows.append(("Test suite", r.detail, "all pass", r.passed))
+
+
+def _is_int(*values: object) -> bool:
+    """Return True if all values can be converted to int.
+
+    Args:
+        *values: Values to check.
+
+    Returns:
+        True when every value is int-convertible.
+    """
+    try:
+        for v in values:
+            int(str(v))
+    except (ValueError, TypeError):
+        return False
+    return True
 
 
 def _print_artifact_table(
