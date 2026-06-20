@@ -15,7 +15,7 @@ from yggtools.quality.checks.security import (
     check_security_code,
     check_security_deps,
 )
-from yggtools.quality.checks.tests import check_tests
+from yggtools.quality.checks.tests import _parse_summary, check_tests
 from yggtools.quality.checks.typecheck import check_typecheck
 from yggtools.uv import RunResult
 
@@ -189,6 +189,41 @@ class TestCheckSecurityDeps:
         assert not result.passed
 
 
+class TestParseSummary:
+    """Tests for _parse_summary."""
+
+    def test_combines_counts_and_coverage(self) -> None:
+        """Requirement: summary must join counts and coverage with ·."""
+        output = "====== 103 passed in 0.64s ======\nTotal coverage: 100.00%\n"
+        assert (
+            _parse_summary(output) == "103 passed in 0.64s · coverage 100.00%"
+        )
+
+    def test_strips_equals_from_result_line(self) -> None:
+        """Requirement: _parse_summary must remove = separators."""
+        output = "===== 5 passed in 0.1s ====="
+        assert "=" not in _parse_summary(output)
+
+    def test_counts_only_when_no_coverage(self) -> None:
+        """Requirement: summary shows counts alone when no coverage line."""
+        output = "3 passed in 0.2s"
+        assert _parse_summary(output) == "3 passed in 0.2s"
+
+    def test_coverage_only_when_no_counts(self) -> None:
+        """Requirement: summary shows coverage alone when no counts line."""
+        output = "Total coverage: 87.00%"
+        assert _parse_summary(output) == "coverage 87.00%"
+
+    def test_returns_last_line_as_fallback(self) -> None:
+        """Requirement: _parse_summary falls back to last line."""
+        output = "some unexpected output\nlast line"
+        assert _parse_summary(output) == "last line"
+
+    def test_returns_empty_string_on_empty_output(self) -> None:
+        """Requirement: _parse_summary returns empty string on empty input."""
+        assert _parse_summary("") == ""
+
+
 class TestCheckTests:
     """Tests for check_tests."""
 
@@ -200,6 +235,18 @@ class TestCheckTests:
         ):
             result = check_tests(tmp_path)
         assert result.passed
+
+    def test_detail_combines_counts_and_coverage(self, tmp_path: Path) -> None:
+        """Requirement: detail must include counts and coverage percentage."""
+        stdout = "====== 103 passed in 0.64s ======\nTotal coverage: 100.00%\n"
+        with patch(
+            "yggtools.quality.checks.tests.run_uv",
+            return_value=_passing(stdout=stdout),
+        ):
+            result = check_tests(tmp_path)
+        assert "103 passed" in result.detail
+        assert "100.00%" in result.detail
+        assert "=" not in result.detail
 
     def test_fails_when_pytest_exits_1(self, tmp_path: Path) -> None:
         """Requirement: check_tests must fail when pytest exits 1."""
