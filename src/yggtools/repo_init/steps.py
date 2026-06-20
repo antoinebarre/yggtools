@@ -97,50 +97,53 @@ def step_add_dev_deps(ctx: RepoContext) -> None:
         raise StepError(msg) from exc
 
 
-def _collect_pyproject_additions(
-    existing: dict[str, object],
-    package_name: str,
-) -> list[str]:
-    """Build the list of TOML sections to append to pyproject.toml.
-
-    Each section is only included when the corresponding key is absent from
-    ``existing``, so that repeated runs are idempotent.
+def _pytest_section(package_name: str) -> str:
+    """Generate the pytest and coverage TOML sections.
 
     Args:
-        existing: Parsed content of the current pyproject.toml.
-        package_name: Normalised package name (hyphens → underscores).
+        package_name: Normalised package name.
 
     Returns:
-        List of TOML section strings ready to be appended.
+        TOML string for ``[tool.pytest.ini_options]`` and
+        ``[tool.coverage.run]``.
     """
-    raw_tool = existing.get("tool", {})
-    tool: dict[str, object] = raw_tool if isinstance(raw_tool, dict) else {}
-    additions: list[str] = []
+    cov_opts = (
+        f'"--tb=short --cov=src/{package_name}'
+        ' --cov-report=term-missing --cov-fail-under=100"'
+    )
+    return (
+        f"\n[tool.pytest.ini_options]\n"
+        f'testpaths = ["tests"]\n'
+        f"addopts = {cov_opts}\n"
+        f'pythonpath = ["src"]\n'
+        f'cache_dir = "work/.pytest_cache"\n'
+        f"\n[tool.coverage.run]\n"
+        f'data_file = "work/.coverage"\n'
+        f'source = ["src/{package_name}"]\n'
+    )
 
-    if "pytest" not in tool:
-        cov_opts = (
-            f'"--tb=short --cov=src/{package_name}'
-            ' --cov-report=term-missing --cov-fail-under=100"'
-        )
-        additions.append(
-            f"\n[tool.pytest.ini_options]\n"
-            f'testpaths = ["tests"]\n'
-            f"addopts = {cov_opts}\n"
-            f'pythonpath = ["src"]\n'
-            f'cache_dir = "work/.pytest_cache"\n'
-            f"\n[tool.coverage.run]\n"
-            f'data_file = "work/.coverage"\n'
-            f'source = ["src/{package_name}"]\n',
-        )
-    if "mypy" not in tool:
-        additions.append("""
+
+def _mypy_section() -> str:
+    """Generate the mypy TOML section.
+
+    Returns:
+        TOML string for ``[tool.mypy]``.
+    """
+    return """
 [tool.mypy]
 strict = true
 mypy_path = "src"
 cache_dir = "work/.mypy_cache"
-""")
-    if "ruff" not in tool:
-        additions.append("""
+"""
+
+
+def _ruff_section() -> str:
+    """Generate the ruff TOML sections.
+
+    Returns:
+        TOML string for ``[tool.ruff]`` and sub-tables.
+    """
+    return """
 [tool.ruff]
 cache-dir = "work/.ruff_cache"
 line-length = 79
@@ -151,9 +154,16 @@ ignore = ["TC001", "TC002", "TC003", "TC004"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-""")
-    if "flake8" not in tool:
-        additions.append("""
+"""
+
+
+def _flake8_section() -> str:
+    """Generate the flake8 TOML section.
+
+    Returns:
+        TOML string for ``[tool.flake8]``.
+    """
+    return """
 [tool.flake8]
 max-line-length = 79
 max-complexity = 10
@@ -161,22 +171,83 @@ docstring-convention = "google"
 count = true
 show-source = true
 statistics = true
-""")
-    if "bandit" not in tool:
-        additions.append("""
+"""
+
+
+def _bandit_section() -> str:
+    """Generate the bandit TOML section.
+
+    Returns:
+        TOML string for ``[tool.bandit]``.
+    """
+    return """
 [tool.bandit]
 exclude_dirs = ["tests", "work", ".venv"]
-""")
-    raw_ygg = tool.get("yggtools", {}) if isinstance(tool, dict) else {}
-    yggtools_tool = raw_ygg if isinstance(raw_ygg, dict) else {}
-    if "code_metrics" not in yggtools_tool:
-        additions.append(f"""
+"""
+
+
+def _code_metrics_section(package_name: str) -> str:
+    """Generate the yggtools code_metrics TOML section.
+
+    Args:
+        package_name: Normalised package name.
+
+    Returns:
+        TOML string for ``[tool.yggtools.code_metrics]``.
+    """
+    return f"""
 [tool.yggtools.code_metrics]
 paths = ["src/{package_name}", "tests"]
 exclude = []
 max_cyclomatic_complexity = 10
 max_module_logical_lines = 900
-""")
+"""
+
+
+def _extract_tool_section(
+    existing: dict[str, object],
+) -> dict[str, object]:
+    """Extract the ``[tool]`` section from parsed pyproject.toml.
+
+    Args:
+        existing: Parsed content of the current pyproject.toml.
+
+    Returns:
+        The tool dict, or an empty dict if absent or malformed.
+    """
+    raw = existing.get("tool", {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _collect_pyproject_additions(
+    existing: dict[str, object],
+    package_name: str,
+) -> list[str]:
+    """Build the list of TOML sections to append to pyproject.toml.
+
+    Each section is only included when the corresponding key is absent
+    from ``existing``, so that repeated runs are idempotent.
+
+    Args:
+        existing: Parsed content of the current pyproject.toml.
+        package_name: Normalised package name (hyphens → underscores).
+
+    Returns:
+        List of TOML section strings ready to be appended.
+    """
+    tool = _extract_tool_section(existing)
+    sections: list[tuple[str, str]] = [
+        ("pytest", _pytest_section(package_name)),
+        ("mypy", _mypy_section()),
+        ("ruff", _ruff_section()),
+        ("flake8", _flake8_section()),
+        ("bandit", _bandit_section()),
+    ]
+    additions = [content for key, content in sections if key not in tool]
+    raw_ygg = tool.get("yggtools", {})
+    ygg = raw_ygg if isinstance(raw_ygg, dict) else {}
+    if "code_metrics" not in ygg:
+        additions.append(_code_metrics_section(package_name))
     return additions
 
 
