@@ -26,7 +26,11 @@ def check_format(project_dir: Path) -> CheckResult:
         capture=True,
     )
     if result.returncode == 0:
-        return CheckResult(name="format", passed=True, detail="0 file(s) to reformat")
+        return CheckResult(
+            name="format",
+            passed=True,
+            detail="0 file(s) to reformat",
+        )
     lines = (result.stdout + result.stderr).splitlines()
     count = sum(1 for ln in lines if "would reformat" in ln)
     return CheckResult(

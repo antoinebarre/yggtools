@@ -13,7 +13,7 @@ from yggtools.quality.runner import CheckResult, register
 
 @dataclass(frozen=True)
 class _MetricsConfig:
-    """Thresholds loaded from ``[tool.yggtools.code_metrics]`` in pyproject.toml.
+    """Thresholds from ``[tool.yggtools.code_metrics]`` in pyproject.toml.
 
     Attributes:
         paths: Directories to inspect.
@@ -55,15 +55,29 @@ def _load_config(project_dir: Path) -> _MetricsConfig:
     if pyproject.exists():
         with pyproject.open("rb") as fh:
             data = tomllib.load(fh)
-        section = (
-            data.get("tool", {}).get("yggtools", {}).get("code_metrics", {})  # type: ignore[union-attr]
-        )
+        raw = data.get("tool", {})
+        if isinstance(raw, dict):
+            ygg = raw.get("yggtools", {})
+            if isinstance(ygg, dict):
+                cm = ygg.get("code_metrics", {})
+                if isinstance(cm, dict):
+                    section = cm
     raw_paths = section.get("paths", ["src", "tests"])
+    raw_exclude = section.get("exclude", [])
+    max_cc = section.get("max_cyclomatic_complexity", 10)
+    max_ll = section.get("max_module_logical_lines", 900)
     return _MetricsConfig(
-        paths=tuple(project_dir / p for p in raw_paths),  # type: ignore[arg-type]
-        exclude=tuple(section.get("exclude", [])),  # type: ignore[arg-type]
-        max_cyclomatic_complexity=int(section.get("max_cyclomatic_complexity", 10)),
-        max_module_logical_lines=int(section.get("max_module_logical_lines", 900)),
+        paths=tuple(
+            project_dir / p
+            for p in (raw_paths if isinstance(raw_paths, list) else [])
+        ),
+        exclude=tuple(raw_exclude if isinstance(raw_exclude, list) else []),
+        max_cyclomatic_complexity=int(max_cc)
+        if isinstance(max_cc, int)
+        else 10,
+        max_module_logical_lines=int(max_ll)
+        if isinstance(max_ll, int)
+        else 900,
     )
 
 
@@ -93,8 +107,13 @@ def _cyclomatic_complexity(node: ast.AST) -> int:
         Cyclomatic complexity value (minimum 1).
     """
     branch_types = (
-        ast.If, ast.For, ast.While, ast.ExceptHandler,
-        ast.With, ast.Assert, ast.comprehension,
+        ast.If,
+        ast.For,
+        ast.While,
+        ast.ExceptHandler,
+        ast.With,
+        ast.Assert,
+        ast.comprehension,
     )
     count = 1
     for child in ast.walk(node):
@@ -126,30 +145,38 @@ def _check_file(path: Path, cfg: _MetricsConfig) -> list[_Violation]:
     violations: list[_Violation] = []
 
     logical_lines = sum(
-        1 for node in ast.walk(tree)
+        1
+        for node in ast.walk(tree)
         if isinstance(node, ast.stmt)
-        and not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and not isinstance(
+            node,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+        )
     )
     if logical_lines > cfg.max_module_logical_lines:
-        violations.append(_Violation(
-            path=path,
-            message=(
-                f"module has {logical_lines} logical lines "
-                f"(max {cfg.max_module_logical_lines})"
+        violations.append(
+            _Violation(
+                path=path,
+                message=(
+                    f"module has {logical_lines} logical lines "
+                    f"(max {cfg.max_module_logical_lines})"
+                ),
             ),
-        ))
+        )
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             cc = _cyclomatic_complexity(node)
             if cc > cfg.max_cyclomatic_complexity:
-                violations.append(_Violation(
-                    path=path,
-                    message=(
-                        f"{node.name}() CC={cc} "
-                        f"(max {cfg.max_cyclomatic_complexity})"
+                violations.append(
+                    _Violation(
+                        path=path,
+                        message=(
+                            f"{node.name}() CC={cc} "
+                            f"(max {cfg.max_cyclomatic_complexity})"
+                        ),
                     ),
-                ))
+                )
 
     return violations
 
@@ -179,11 +206,18 @@ def check_metrics(project_dir: Path) -> CheckResult:
             violations.extend(_check_file(py_file, cfg))
 
     if not violations:
-        return CheckResult(name="metrics", passed=True, detail="All metrics pass")
+        return CheckResult(
+            name="metrics",
+            passed=True,
+            detail="All metrics pass",
+        )
 
     first = violations[0]
     return CheckResult(
         name="metrics",
         passed=False,
-        detail=f"{len(violations)} violation(s) — {first.path.name}: {first.message}",
+        detail=(
+            f"{len(violations)} violation(s) — "
+            f"{first.path.name}: {first.message}"
+        ),
     )

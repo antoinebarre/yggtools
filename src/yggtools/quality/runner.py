@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -45,7 +46,7 @@ class CheckFn(Protocol):
 _REGISTRY: dict[str, CheckFn] = {}
 
 
-def register(name: str) -> "function":  # type: ignore[name-defined]
+def register(name: str) -> Callable[[CheckFn], CheckFn]:
     """Decorator that registers a function as a named quality check.
 
     Args:
@@ -54,6 +55,7 @@ def register(name: str) -> "function":  # type: ignore[name-defined]
     Returns:
         Decorator that registers and returns the decorated function unchanged.
     """
+
     def decorator(fn: CheckFn) -> CheckFn:
         """Register fn under name and return it unchanged.
 
@@ -65,6 +67,7 @@ def register(name: str) -> "function":  # type: ignore[name-defined]
         """
         _REGISTRY[name] = fn
         return fn
+
     return decorator
 
 

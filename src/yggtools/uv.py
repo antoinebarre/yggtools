@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from dataclasses import dataclass
 from pathlib import Path
-
 
 DEV_DEPS: list[str] = [
     "bandit>=1.8",
@@ -73,7 +72,7 @@ def check_uv_available() -> None:
     if shutil.which("uv") is None:
         msg = (
             "uv is not installed or not in PATH. "
-            "Install from https://docs.astral.sh/uv/getting-started/installation/"
+            "Install from https://docs.astral.sh/uv/"
         )
         raise UvNotFoundError(msg)
 
@@ -99,11 +98,12 @@ def run_uv(
     Raises:
         CommandError: If ``check`` is True and the command fails.
     """
-    proc = subprocess.run(  # noqa: S603
-        ["uv", *args],
+    proc = subprocess.run(  # noqa: S603  # nosec B603 B607
+        ["uv", *args],  # noqa: S607
         cwd=cwd,
         capture_output=capture,
         text=True,
+        check=False,
     )
     result = RunResult(
         returncode=proc.returncode,
@@ -116,7 +116,11 @@ def run_uv(
     return result
 
 
-def uv_init_lib(project_dir: Path, project_name: str, python_version: str) -> None:
+def uv_init_lib(
+    project_dir: Path,
+    project_name: str,
+    python_version: str,
+) -> None:
     """Initialise a new library project using ``uv init --lib``.
 
     Args:
@@ -139,7 +143,7 @@ def uv_add_dev(project_dir: Path, deps: list[str]) -> None:
 
     Args:
         project_dir: Root directory of the target project.
-        deps: List of dependency specifiers (e.g. ``["pytest>=8", "ruff>=0.4"]``).
+        deps: Dependency specifiers (e.g. ``["pytest>=8", "ruff>=0.4"]``).
 
     Raises:
         CommandError: If ``uv add --dev`` exits with a non-zero status.
@@ -169,14 +173,14 @@ def git_commit(project_dir: Path, message: str) -> None:
     Raises:
         CommandError: If ``git commit`` exits with a non-zero status.
     """
-    subprocess.run(  # noqa: S603
-        ["git", "add", "-A"],
+    subprocess.run(  # nosec B603 B607
+        ["git", "add", "-A"],  # noqa: S607
         cwd=project_dir,
         check=True,
         capture_output=True,
     )
-    subprocess.run(  # noqa: S603
-        ["git", "commit", "-m", message],
+    subprocess.run(  # noqa: S603  # nosec B603 B607
+        ["git", "commit", "-m", message],  # noqa: S607
         cwd=project_dir,
         check=True,
         capture_output=True,

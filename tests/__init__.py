@@ -1,1 +1,1 @@
-"""Test suite for yggtools."""
+"""Test suite."""

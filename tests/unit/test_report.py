@@ -15,7 +15,11 @@ def _results() -> list[CheckResult]:
         Two CheckResult instances: one passing, one failing.
     """
     return [
-        CheckResult(name="format", passed=True, detail="0 file(s) to reformat"),
+        CheckResult(
+            name="format",
+            passed=True,
+            detail="0 file(s) to reformat",
+        ),
         CheckResult(name="ruff", passed=False, detail="3 error(s)"),
     ]
 
@@ -37,7 +41,7 @@ def test_write_report_contains_check_names(tmp_path: Path) -> None:
 
 
 def test_write_report_marks_pass_and_fail(tmp_path: Path) -> None:
-    """Requirement: write_report must distinguish passing and failing checks."""
+    """Requirement: write_report must mark pass and fail checks."""
     output = tmp_path / "work" / "report.md"
     write_report(_results(), tmp_path, output)
     content = output.read_text()

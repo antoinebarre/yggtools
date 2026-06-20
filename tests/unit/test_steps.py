@@ -15,6 +15,7 @@ from yggtools.repo_init.steps import (
     step_patch_pyproject,
     step_uv_init,
     step_write_ci,
+    step_write_claude_md,
     step_write_makefile,
     step_write_tests_dir,
     step_write_work_dir,
@@ -60,9 +61,10 @@ class TestStepUvInit:
     """Tests for step_uv_init."""
 
     def test_calls_uv_init_lib_with_context_values(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
-        """Requirement: step_uv_init must call uv_init_lib with correct args."""
+        """Requirement: step_uv_init must call uv_init_lib correctly."""
         ctx = _ctx(tmp_path)
         with patch("yggtools.repo_init.steps.uv_init_lib") as mock:
             step_uv_init(ctx)
@@ -76,16 +78,19 @@ class TestStepUvInit:
         mock.assert_not_called()
 
     def test_raises_step_error_on_command_failure(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
         """Requirement: step_uv_init must raise StepError when uv fails."""
         ctx = _ctx(tmp_path)
-        with patch(
-            "yggtools.repo_init.steps.uv_init_lib",
-            side_effect=CommandError("fail", 1, ""),
+        with (
+            patch(
+                "yggtools.repo_init.steps.uv_init_lib",
+                side_effect=CommandError("fail", 1, ""),
+            ),
+            pytest.raises(StepError),
         ):
-            with pytest.raises(StepError):
-                step_uv_init(ctx)
+            step_uv_init(ctx)
 
 
 class TestStepAddDevDeps:
@@ -106,14 +111,16 @@ class TestStepAddDevDeps:
         mock.assert_not_called()
 
     def test_raises_step_error_on_failure(self, tmp_path: Path) -> None:
-        """Requirement: step_add_dev_deps must raise StepError on uv failure."""
+        """Requirement: step_add_dev_deps must raise StepError on failure."""
         ctx = _ctx(tmp_path)
-        with patch(
-            "yggtools.repo_init.steps.uv_add_dev",
-            side_effect=CommandError("fail", 1, ""),
+        with (
+            patch(
+                "yggtools.repo_init.steps.uv_add_dev",
+                side_effect=CommandError("fail", 1, ""),
+            ),
+            pytest.raises(StepError),
         ):
-            with pytest.raises(StepError):
-                step_add_dev_deps(ctx)
+            step_add_dev_deps(ctx)
 
 
 class TestStepPatchPyproject:
@@ -148,7 +155,7 @@ class TestStepPatchPyproject:
         assert "[tool.mypy]" in content
 
     def test_appends_yggtools_metrics_section(self, tmp_path: Path) -> None:
-        """Requirement: step_patch_pyproject must add [tool.yggtools] section."""
+        """Requirement: step_patch_pyproject must add yggtools section."""
         ctx = _ctx(tmp_path)
         self._minimal_pyproject(ctx.project_dir)
         step_patch_pyproject(ctx)
@@ -174,7 +181,7 @@ class TestStepWriteMakefile:
         assert (ctx.project_dir / "Makefile").exists()
 
     def test_makefile_references_yggtools_run(self, tmp_path: Path) -> None:
-        """Requirement: Makefile must invoke yggtools run, not local scripts."""
+        """Requirement: Makefile must invoke yggtools run."""
         ctx = _ctx(tmp_path)
         ctx.project_dir.mkdir(parents=True)
         step_write_makefile(ctx)
@@ -234,9 +241,7 @@ class TestStepWriteCi:
         ctx = _ctx(tmp_path)
         ctx.project_dir.mkdir(parents=True)
         step_write_ci(ctx)
-        assert (
-            ctx.project_dir / ".github" / "workflows" / "ci.yml"
-        ).exists()
+        assert (ctx.project_dir / ".github" / "workflows" / "ci.yml").exists()
         assert (ctx.project_dir / ".gitlab-ci.yml").exists()
 
     def test_skips_when_no_git(self, tmp_path: Path) -> None:
@@ -255,9 +260,10 @@ class TestStepWriteCi:
         assert not (ctx.project_dir / ".github").exists()
 
     def test_github_workflow_contains_python_version(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
-        """Requirement: GitHub CI must reference the configured Python version."""
+        """Requirement: GitHub CI must include the Python version."""
         ctx = _ctx(tmp_path)
         ctx.project_dir.mkdir(parents=True)
         step_write_ci(ctx)
@@ -267,16 +273,43 @@ class TestStepWriteCi:
         assert "3.12" in content
 
 
+class TestStepWriteClaudeMd:
+    """Tests for step_write_claude_md."""
+
+    def test_writes_claude_md(self, tmp_path: Path) -> None:
+        """Requirement: step_write_claude_md must create CLAUDE.md."""
+        ctx = _ctx(tmp_path)
+        ctx.project_dir.mkdir(parents=True)
+        step_write_claude_md(ctx)
+        assert (ctx.project_dir / "CLAUDE.md").exists()
+
+    def test_claude_md_contains_package_name(self, tmp_path: Path) -> None:
+        """Requirement: CLAUDE.md must reference the package source path."""
+        ctx = _ctx(tmp_path)
+        ctx.project_dir.mkdir(parents=True)
+        step_write_claude_md(ctx)
+        content = (ctx.project_dir / "CLAUDE.md").read_text()
+        assert "my_lib" in content
+
+    def test_skips_in_dry_run(self, tmp_path: Path) -> None:
+        """Requirement: step_write_claude_md must not write in dry-run mode."""
+        ctx = _ctx(tmp_path, dry_run=True)
+        ctx.project_dir.mkdir(parents=True)
+        step_write_claude_md(ctx)
+        assert not (ctx.project_dir / "CLAUDE.md").exists()
+
+
 class TestStepGitCommit:
     """Tests for step_git_commit."""
 
     def test_calls_git_commit(self, tmp_path: Path) -> None:
-        """Requirement: step_git_commit must call git_commit with init message."""
+        """Requirement: step_git_commit must call git_commit with message."""
         ctx = _ctx(tmp_path)
         with patch("yggtools.repo_init.steps.git_commit") as mock:
             step_git_commit(ctx)
         mock.assert_called_once_with(
-            ctx.project_dir, "chore: yggtools init-repo"
+            ctx.project_dir,
+            "chore: yggtools init-repo",
         )
 
     def test_skips_when_no_git(self, tmp_path: Path) -> None:

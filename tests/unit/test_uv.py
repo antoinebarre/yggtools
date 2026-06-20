@@ -25,9 +25,11 @@ class TestCheckUvAvailable:
 
     def test_raises_when_uv_not_in_path(self) -> None:
         """Requirement: check_uv_available must raise UvNotFoundError."""
-        with patch("yggtools.uv.shutil.which", return_value=None):
-            with pytest.raises(UvNotFoundError):
-                check_uv_available()
+        with (
+            patch("yggtools.uv.shutil.which", return_value=None),
+            pytest.raises(UvNotFoundError),
+        ):
+            check_uv_available()
 
     def test_does_not_raise_when_uv_found(self) -> None:
         """Requirement: check_uv_available must not raise when uv is found."""
@@ -48,18 +50,22 @@ class TestRunUv:
         assert result.stdout == "ok\n"
 
     def test_raises_command_error_when_check_true(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
-        """Requirement: run_uv must raise CommandError when check=True fails."""
+        """Requirement: run_uv must raise CommandError when check=True."""
         mock_proc = MagicMock(returncode=1, stdout="", stderr="boom")
-        with patch("yggtools.uv.subprocess.run", return_value=mock_proc):
-            with pytest.raises(CommandError) as exc_info:
-                run_uv(["run", "bad"], cwd=tmp_path, check=True)
+        with (
+            patch("yggtools.uv.subprocess.run", return_value=mock_proc),
+            pytest.raises(CommandError) as exc_info,
+        ):
+            run_uv(["run", "bad"], cwd=tmp_path, check=True)
         assert exc_info.value.returncode == 1
         assert exc_info.value.stderr == "boom"
 
     def test_no_raise_when_check_false_and_nonzero(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
         """Requirement: run_uv must not raise when check=False and exit!=0."""
         mock_proc = MagicMock(returncode=1, stdout="", stderr="err")

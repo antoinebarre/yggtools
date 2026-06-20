@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import patch
+from typing import cast
 
 import pytest
 
 from yggtools.quality.runner import (
-    CheckResult,
     _REGISTRY,
+    CheckFn,
+    CheckResult,
     register,
     registered_checks,
     run_all,
@@ -17,7 +19,7 @@ from yggtools.quality.runner import (
 )
 
 
-def _isolated_registry() -> dict:
+def _isolated_registry() -> dict[str, object]:
     """Return a clean copy of the registry for test isolation.
 
     Returns:
@@ -30,6 +32,7 @@ def test_register_adds_check_to_registry() -> None:
     """Requirement: @register must add the function to _REGISTRY under name."""
     original = dict(_REGISTRY)
     try:
+
         @register("_test_check")
         def _dummy(project_dir: Path) -> CheckResult:
             """Dummy check for testing.
@@ -54,6 +57,7 @@ def test_registered_checks_returns_names_in_order() -> None:
     original = dict(_REGISTRY)
     _REGISTRY.clear()
     try:
+
         @register("alpha")
         def _a(project_dir: Path) -> CheckResult:
             """Alpha check stub.
@@ -89,6 +93,7 @@ def test_run_one_calls_registered_function(tmp_path: Path) -> None:
     original = dict(_REGISTRY)
     _REGISTRY.clear()
     try:
+
         @register("_ping")
         def _ping(project_dir: Path) -> CheckResult:
             """Ping check stub.
@@ -116,12 +121,13 @@ def test_run_one_raises_on_unknown_check(tmp_path: Path) -> None:
 
 
 def test_run_all_returns_result_per_registered_check(tmp_path: Path) -> None:
-    """Requirement: run_all must return one CheckResult per registered check."""
+    """Requirement: run_all must return one result per registered check."""
     original = dict(_REGISTRY)
     _REGISTRY.clear()
     try:
         for name in ("x", "y"):
-            def _make(n: str):  # noqa: ANN202
+
+            def _make(n: str) -> Callable[[Path], CheckResult]:
                 """Factory for stub check functions.
 
                 Args:
@@ -130,6 +136,7 @@ def test_run_all_returns_result_per_registered_check(tmp_path: Path) -> None:
                 Returns:
                     Check function returning a passing CheckResult.
                 """
+
                 def _check(project_dir: Path) -> CheckResult:
                     """Stub check.
 
@@ -140,8 +147,10 @@ def test_run_all_returns_result_per_registered_check(tmp_path: Path) -> None:
                         Passing CheckResult.
                     """
                     return CheckResult(name=n, passed=True, detail="")
+
                 return _check
-            _REGISTRY[name] = _make(name)
+
+            _REGISTRY[name] = cast("CheckFn", _make(name))
 
         results = run_all(tmp_path)
         assert len(results) == 2

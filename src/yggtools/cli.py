@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from yggtools.repo_init.pipeline import STEPS, run_pipeline
+import yggtools.quality.checks.format
+import yggtools.quality.checks.lint
+import yggtools.quality.checks.metrics
+import yggtools.quality.checks.security
+import yggtools.quality.checks.tests
+import yggtools.quality.checks.typecheck  # noqa: F401
+from yggtools.quality.report import write_report
+from yggtools.quality.runner import registered_checks, run_all, run_one
+from yggtools.repo_init.pipeline import STEPS, STEPS_INIT
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError, check_uv_available
 
@@ -25,7 +33,7 @@ _err_console = Console(stderr=True)
 @app.command("init-repo")
 def init_repo(
     project_name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(
             help="Project name. Defaults to the current directory name.",
         ),
@@ -66,7 +74,7 @@ def init_repo(
     )
 
     if dry_run:
-        _print_dry_run_plan(ctx)
+        _print_dry_run_plan(ctx, include_uv_init=True)
         return
 
     try:
@@ -77,10 +85,10 @@ def init_repo(
 
     _console.print(
         f"[bold]Initialising[/bold] [cyan]{ctx.project_name}[/cyan] "
-        f"(Python {ctx.python_version})"
+        f"(Python {ctx.python_version})",
     )
     try:
-        _run_with_progress(ctx)
+        _run_with_progress(ctx, steps=STEPS)
     except StepError as exc:
         _err_console.print(f"\n[bold red]Error:[/bold red] {exc}")
         raise typer.Exit(1) from exc
@@ -95,12 +103,93 @@ def init_repo(
     _console.print(f"  cd {ctx.project_name}")
     _console.print("  make check    [dim]# full quality pipeline[/dim]")
     _console.print("  make test     [dim]# tests only[/dim]")
+    _console.print("  make format   [dim]# auto-format source[/dim]")
+
+
+@app.command("init")
+def init_inplace(
+    python: Annotated[
+        str,
+        typer.Option("--python", help="Target Python version."),
+    ] = "3.12",
+    no_git: Annotated[
+        bool,
+        typer.Option(
+            "--no-git/--git",
+            help="Skip CI workflow generation and final git commit.",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run/--no-dry-run",
+            help="Show what would be done without writing anything.",
+        ),
+    ] = False,
+) -> None:
+    """Complete the yggtools scaffold in the current directory.
+
+    Designed to be run after ``uv init --lib``.  Adds yggtools and quality
+    tools as dev dependencies, patches ``pyproject.toml``, writes a
+    ``Makefile`` and ``CLAUDE.md``, creates ``tests/`` and ``work/``, and
+    generates CI workflows.
+
+    Exits with code 1 if ``pyproject.toml`` is absent in the current
+    directory.
+    """
+    cwd = Path.cwd()
+
+    if not (cwd / "pyproject.toml").exists():
+        _err_console.print(
+            "[bold red]Error:[/bold red] No pyproject.toml found in the "
+            "current directory. Run ``uv init --lib PROJECT_NAME`` first.",
+        )
+        raise typer.Exit(1)
+
+    project_name = cwd.name
+    ctx = RepoContext(
+        project_name=project_name,
+        python_version=python,
+        parent_dir=cwd.parent,
+        no_git=no_git,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        _print_dry_run_plan(ctx, include_uv_init=False)
+        return
+
+    try:
+        check_uv_available()
+    except UvNotFoundError as exc:
+        _err_console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+
+    _console.print(
+        f"[bold]Initialising[/bold] [cyan]{ctx.project_name}[/cyan] "
+        f"(Python {ctx.python_version})",
+    )
+    try:
+        _run_with_progress(ctx, steps=STEPS_INIT)
+    except StepError as exc:
+        _err_console.print(f"\n[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        _err_console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+
+    _console.print()
+    _console.print("[bold green]Project ready.[/bold green]")
+    _console.print()
+    _console.print("Next steps:")
+    _console.print("  make check    [dim]# full quality pipeline[/dim]")
+    _console.print("  make test     [dim]# tests only[/dim]")
 
 
 @app.command("run")
 def run(
     check_name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(
             help="Name of the check to run (e.g. 'format', 'tests').",
         ),
@@ -114,7 +203,7 @@ def run(
         typer.Option("--ci", help="CI mode: write work/report.md."),
     ] = False,
     path: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--path", help="Project directory (default: cwd)."),
     ] = None,
 ) -> None:
@@ -123,28 +212,22 @@ def run(
     In CI mode (``--ci``), writes a Markdown report to ``work/report.md``
     and exits with code 1 if any check fails.
     """
-    import yggtools.quality.checks.format  # noqa: F401
-    import yggtools.quality.checks.lint  # noqa: F401
-    import yggtools.quality.checks.metrics  # noqa: F401
-    import yggtools.quality.checks.security  # noqa: F401
-    import yggtools.quality.checks.tests  # noqa: F401
-    import yggtools.quality.checks.typecheck  # noqa: F401
-    from yggtools.quality.report import write_report
-    from yggtools.quality.runner import registered_checks, run_all, run_one
-
     project_dir = Path(path) if path else Path.cwd()
 
     if not all_checks and check_name is None:
         _err_console.print(
-            "[bold red]Error:[/bold red] "
-            "Specify a check name or use --all."
+            "[bold red]Error:[/bold red] Specify a check name or use --all.",
         )
         _err_console.print(
-            f"Available checks: {', '.join(registered_checks())}"
+            f"Available checks: {', '.join(registered_checks())}",
         )
         raise typer.Exit(1)
 
-    results = run_all(project_dir) if all_checks else [run_one(check_name, project_dir)]  # type: ignore[arg-type]
+    results = (
+        run_all(project_dir)
+        if all_checks
+        else [run_one(check_name, project_dir)]  # type: ignore[arg-type]
+    )
 
     table = Table(
         title=f"yggtools run — {project_dir.name}",
@@ -164,7 +247,11 @@ def run(
     _console.print(table)
 
     if ci_mode:
-        write_report(results, project_dir, project_dir / "work" / "report.md")
+        write_report(
+            results,
+            project_dir,
+            project_dir / "work" / "report.md",
+        )
 
     if failed:
         _console.print(f"\n[bold red]{failed} check(s) failed.[/bold red]")
@@ -172,37 +259,54 @@ def run(
     _console.print("\n[bold green]All checks passed.[/bold green]")
 
 
-def _run_with_progress(ctx: RepoContext) -> None:
-    """Execute the pipeline and print a progress line per step.
+def _run_with_progress(
+    ctx: RepoContext,
+    steps: list | None = None,
+) -> None:
+    """Execute a pipeline and print a progress line per step.
 
     Args:
         ctx: Pipeline context passed to each step.
+        steps: List of PipelineStep to execute.  Defaults to ``STEPS``.
 
     Raises:
         StepError: Propagated from any failing step.
     """
-    for step in STEPS:
+    active_steps = steps if steps is not None else STEPS
+    for step in active_steps:
         step.fn(ctx)
         _console.print(f"  [green]✓[/green] {step.name}")
 
 
-def _print_dry_run_plan(ctx: RepoContext) -> None:
-    """Print the list of actions init-repo would perform.
+def _print_dry_run_plan(
+    ctx: RepoContext,
+    *,
+    include_uv_init: bool = True,
+) -> None:
+    """Print the list of actions the init pipeline would perform.
 
     Args:
         ctx: Pipeline context.
+        include_uv_init: When True, include the ``uv init --lib`` step in
+            the printed plan (used by ``init-repo``).  When False, omit it
+            (used by ``init``).
     """
     _console.print(
-        "[bold yellow]Dry run — nothing will be written[/bold yellow]"
+        "[bold yellow]Dry run — nothing will be written[/bold yellow]",
     )
     _console.print(
-        f"Project: [cyan]{ctx.project_name}[/cyan] → {ctx.project_dir}"
+        f"Project: [cyan]{ctx.project_name}[/cyan] → {ctx.project_dir}",
     )
-    actions = [
-        f"uv init --lib {ctx.project_name} --python {ctx.python_version}",
-        f"uv add --dev yggtools + quality tools",
+    actions: list[str] = []
+    if include_uv_init:
+        actions.append(
+            f"uv init --lib {ctx.project_name} --python {ctx.python_version}",
+        )
+    actions += [
+        "uv add --dev yggtools + quality tools",
         "patch pyproject.toml ([tool.ruff], [tool.mypy], …)",
         "write Makefile",
+        "write CLAUDE.md",
         "create tests/__init__.py, tests/conftest.py",
         "create work/.gitkeep",
     ]

@@ -5,15 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from yggtools.quality.checks.format import check_format
 from yggtools.quality.checks.lint import check_flake8, check_ruff
 from yggtools.quality.checks.metrics import check_metrics
-from yggtools.quality.checks.security import check_security_code, check_security_deps
+from yggtools.quality.checks.security import (
+    check_security_code,
+    check_security_deps,
+)
 from yggtools.quality.checks.tests import check_tests
 from yggtools.quality.checks.typecheck import check_typecheck
-from yggtools.quality.runner import CheckResult
 from yggtools.uv import RunResult
 
 
@@ -48,13 +48,16 @@ class TestCheckFormat:
 
     def test_passes_when_ruff_exits_0(self, tmp_path: Path) -> None:
         """Requirement: check_format must pass when ruff format exits 0."""
-        with patch("yggtools.quality.checks.format.run_uv", return_value=_passing()):
+        with patch(
+            "yggtools.quality.checks.format.run_uv",
+            return_value=_passing(),
+        ):
             result = check_format(tmp_path)
         assert result.passed
         assert result.name == "format"
 
     def test_fails_and_counts_files_to_reformat(self, tmp_path: Path) -> None:
-        """Requirement: check_format detail must count 'would reformat' lines."""
+        """Requirement: check_format detail must count reformat lines."""
         output = "would reformat src/a.py\nwould reformat src/b.py\n"
         with patch(
             "yggtools.quality.checks.format.run_uv",
@@ -70,13 +73,16 @@ class TestCheckRuff:
 
     def test_passes_when_ruff_exits_0(self, tmp_path: Path) -> None:
         """Requirement: check_ruff must pass when ruff check exits 0."""
-        with patch("yggtools.quality.checks.lint.run_uv", return_value=_passing()):
+        with patch(
+            "yggtools.quality.checks.lint.run_uv",
+            return_value=_passing(),
+        ):
             result = check_ruff(tmp_path)
         assert result.passed
 
     def test_fails_and_includes_error_count(self, tmp_path: Path) -> None:
         """Requirement: check_ruff detail must include the error count."""
-        output = "src/a.py:1:1: E501 line too long\nsrc/b.py:2:1: E501 line too long\n"
+        output = "src/a.py:1:1: E501 line too long\nsrc/b.py:2:1: E501\n"
         with patch(
             "yggtools.quality.checks.lint.run_uv",
             return_value=_failing(stdout=output),
@@ -91,7 +97,10 @@ class TestCheckFlake8:
 
     def test_passes_when_flake8_exits_0(self, tmp_path: Path) -> None:
         """Requirement: check_flake8 must pass when flake8 exits 0."""
-        with patch("yggtools.quality.checks.lint.run_uv", return_value=_passing()):
+        with patch(
+            "yggtools.quality.checks.lint.run_uv",
+            return_value=_passing(),
+        ):
             result = check_flake8(tmp_path)
         assert result.passed
 
@@ -121,7 +130,9 @@ class TestCheckTypecheck:
 
     def test_fails_and_counts_errors(self, tmp_path: Path) -> None:
         """Requirement: check_typecheck detail must count ': error:' lines."""
-        output = "src/a.py:1: error: Incompatible\nsrc/b.py:2: error: Missing\n"
+        output = (
+            "src/a.py:1: error: Incompatible\nsrc/b.py:2: error: Missing\n"
+        )
         with patch(
             "yggtools.quality.checks.typecheck.run_uv",
             return_value=_failing(stdout=output),
@@ -137,13 +148,14 @@ class TestCheckSecurityCode:
     def test_passes_on_zero_issues(self, tmp_path: Path) -> None:
         """Requirement: check_security_code must pass when bandit exits 0."""
         with patch(
-            "yggtools.quality.checks.security.run_uv", return_value=_passing()
+            "yggtools.quality.checks.security.run_uv",
+            return_value=_passing(),
         ):
             result = check_security_code(tmp_path)
         assert result.passed
 
     def test_fails_on_non_zero_exit(self, tmp_path: Path) -> None:
-        """Requirement: check_security_code must fail when bandit exits non-0."""
+        """Requirement: check_security_code must fail on non-zero exit."""
         with patch(
             "yggtools.quality.checks.security.run_uv",
             return_value=_failing(stdout=">> Issue [B101]\n"),
@@ -156,15 +168,16 @@ class TestCheckSecurityDeps:
     """Tests for check_security_deps."""
 
     def test_passes_on_zero_vulnerabilities(self, tmp_path: Path) -> None:
-        """Requirement: check_security_deps must pass when pip-audit exits 0."""
+        """Requirement: check_security_deps must pass on zero exit."""
         with patch(
-            "yggtools.quality.checks.security.run_uv", return_value=_passing()
+            "yggtools.quality.checks.security.run_uv",
+            return_value=_passing(),
         ):
             result = check_security_deps(tmp_path)
         assert result.passed
 
     def test_fails_on_vulnerability_found(self, tmp_path: Path) -> None:
-        """Requirement: check_security_deps must fail when pip-audit exits 1."""
+        """Requirement: check_security_deps must fail on non-zero exit."""
         with patch(
             "yggtools.quality.checks.security.run_uv",
             return_value=_failing(stdout="1 vulnerability found\n"),
@@ -200,11 +213,11 @@ class TestCheckMetrics:
     """Tests for check_metrics (pure Python, no subprocess)."""
 
     def test_passes_for_simple_module(self, tmp_path: Path) -> None:
-        """Requirement: check_metrics must pass for a module within thresholds."""
+        """Requirement: check_metrics must pass when thresholds are met."""
         src = tmp_path / "src" / "mypkg"
         src.mkdir(parents=True)
         (src / "simple.py").write_text(
-            "def add(a: int, b: int) -> int:\n    return a + b\n"
+            "def add(a: int, b: int) -> int:\n    return a + b\n",
         )
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text(
@@ -212,29 +225,122 @@ class TestCheckMetrics:
             'paths = ["src"]\n'
             "exclude = []\n"
             "max_cyclomatic_complexity = 10\n"
-            "max_module_logical_lines = 900\n"
+            "max_module_logical_lines = 900\n",
         )
         result = check_metrics(tmp_path)
         assert result.passed
+
+    def _write_pyproject(
+        self,
+        tmp_path: Path,
+        *,
+        max_cc: int = 10,
+        max_lines: int = 900,
+    ) -> None:
+        """Write a minimal pyproject with yggtools metrics config.
+
+        Args:
+            tmp_path: Project root directory.
+            max_cc: Maximum cyclomatic complexity threshold.
+            max_lines: Maximum logical lines threshold.
+        """
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.yggtools.code_metrics]\n"
+            'paths = ["src"]\n'
+            "exclude = []\n"
+            f"max_cyclomatic_complexity = {max_cc}\n"
+            f"max_module_logical_lines = {max_lines}\n",
+        )
 
     def test_fails_when_complexity_exceeded(self, tmp_path: Path) -> None:
         """Requirement: check_metrics must fail when CC exceeds threshold."""
         src = tmp_path / "src"
         src.mkdir()
-        complex_fn = "\n".join([
-            "def complex_fn(x):",
-            *[f"    if x == {i}: return {i}" for i in range(12)],
-            "    return 0",
-        ])
-        (src / "complex.py").write_text(complex_fn)
-        pyproject = tmp_path / "pyproject.toml"
-        pyproject.write_text(
-            "[tool.yggtools.code_metrics]\n"
-            'paths = ["src"]\n'
-            "exclude = []\n"
-            "max_cyclomatic_complexity = 5\n"
-            "max_module_logical_lines = 900\n"
+        complex_fn = "\n".join(
+            [
+                "def complex_fn(x):",
+                *[f"    if x == {i}: return {i}" for i in range(12)],
+                "    return 0",
+            ],
         )
+        (src / "complex.py").write_text(complex_fn)
+        self._write_pyproject(tmp_path, max_cc=5)
         result = check_metrics(tmp_path)
         assert not result.passed
         assert "CC=" in result.detail
+
+    def test_counts_bool_op_branches(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must count bool operators as branches."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "boolop.py").write_text(
+            "def fn(a, b, c, d, e, f, g, h):\n"
+            "    return a and b and c and d and e and f and g and h\n",
+        )
+        self._write_pyproject(tmp_path, max_cc=5)
+        result = check_metrics(tmp_path)
+        assert not result.passed
+
+    def test_counts_ternary_as_branch(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must count ternary as a branch."""
+        src = tmp_path / "src"
+        src.mkdir()
+        ternary_fn = (
+            "def fn(x):\n"
+            "    return "
+            + " if x else ".join([str(i) for i in range(8)])
+            + "\n"
+        )
+        (src / "ternary.py").write_text(ternary_fn)
+        self._write_pyproject(tmp_path, max_cc=5)
+        result = check_metrics(tmp_path)
+        assert not result.passed
+
+    def test_fails_when_line_count_exceeded(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must fail when line count exceeds max."""
+        src = tmp_path / "src"
+        src.mkdir()
+        lines = "\n".join(f"x{i} = {i}" for i in range(20))
+        (src / "big.py").write_text(lines + "\n")
+        self._write_pyproject(tmp_path, max_lines=5)
+        result = check_metrics(tmp_path)
+        assert not result.passed
+        assert "logical lines" in result.detail
+
+    def test_skips_files_with_syntax_errors(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must skip files that cannot be parsed."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "broken.py").write_text("def (:\n")
+        self._write_pyproject(tmp_path)
+        result = check_metrics(tmp_path)
+        assert result.passed
+
+    def test_skips_excluded_files(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must skip excluded files."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "excluded.py").write_text(
+            "\n".join(f"x{i} = {i}" for i in range(20)) + "\n",
+        )
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.yggtools.code_metrics]\n"
+            'paths = ["src"]\n'
+            'exclude = ["*/excluded.py"]\n'
+            "max_cyclomatic_complexity = 10\n"
+            "max_module_logical_lines = 5\n",
+        )
+        result = check_metrics(tmp_path)
+        assert result.passed
+
+    def test_skips_nonexistent_paths(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must skip nonexistent paths."""
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.yggtools.code_metrics]\n"
+            'paths = ["nonexistent"]\n'
+            "exclude = []\n"
+            "max_cyclomatic_complexity = 10\n"
+            "max_module_logical_lines = 900\n",
+        )
+        result = check_metrics(tmp_path)
+        assert result.passed

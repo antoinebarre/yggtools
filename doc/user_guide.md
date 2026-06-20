@@ -1,7 +1,7 @@
 # yggtools — User Guide
 
-**Version:** 1.0.0  
-**Date:** 2026-06-14
+**Version:** 1.0.0
+**Date:** 2026-06-15
 
 ---
 
@@ -22,17 +22,23 @@
 
 ## 1. What is yggtools?
 
-`yggtools` is a CLI tool that scaffolds opinionated Python packages managed
-by [uv](https://docs.astral.sh/uv/). It generates a complete, ready-to-run
-project with:
+`yggtools` is a CLI dev tool that scaffolds opinionated Python packages
+managed by [uv](https://docs.astral.sh/uv/). A single command creates a
+complete, ready-to-run project and installs a quality pipeline you can run
+with `make check`.
 
-- `src/` layout with a properly installed editable package
-- pre-configured linting, type checking, security scanning, and tests
-- a `Makefile` pipeline (`make check`, `make ci`)
-- CI workflows for GitHub Actions and GitLab CI
-- a publish script ready for PyPI via Trusted Publishing
+Key design decisions:
 
-It is itself installed as a `uv` tool, so it never pollutes your project's
+- **No scripts in the scaffolded project.** The generated `Makefile` calls
+  `uv run yggtools run --all`. Quality tooling stays inside `yggtools` and
+  is updated by upgrading the tool, not by copying files into every project.
+- **`uv init --lib` first.** The first init step delegates to `uv init --lib`,
+  which creates the canonical `src/` layout and keeps the project structure
+  in sync with uv conventions.
+- **All Python, no shell.** The quality pipeline is implemented in Python
+  (Registry + Strategy pattern), making it testable and type-checked.
+
+`yggtools` is itself a `uv` tool, so it never pollutes your project's
 virtual environment.
 
 ---
@@ -42,8 +48,8 @@ virtual environment.
 | Requirement | Minimum | Notes |
 |-------------|---------|-------|
 | Python | 3.12 | Managed by uv |
-| [uv](https://docs.astral.sh/uv/) | 0.4 | Required at runtime |
-| git | any | Optional — used by `yggtools init` for the first commit |
+| [uv](https://docs.astral.sh/uv/) | 0.5 | Required at runtime |
+| git | 2.30 | Optional — used by `init-repo` for the initial commit |
 
 Install uv if you don't have it:
 
@@ -58,14 +64,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Install as a uv tool (recommended)
 
 `uv tool install` installs `yggtools` in an isolated environment and exposes
-the `yggtools` command globally. This is the correct way to use it — it never
-conflicts with your project dependencies.
+the `yggtools` command globally. It never conflicts with your project
+dependencies.
 
 ```bash
 uv tool install yggtools
 ```
 
-Verify the installation:
+Verify:
 
 ```bash
 yggtools --help
@@ -83,13 +89,7 @@ uv tool upgrade yggtools
 uv tool uninstall yggtools
 ```
 
-### Check installed tools
-
-```bash
-uv tool list
-```
-
-### Pin a specific version
+### Install a specific version
 
 ```bash
 uv tool install yggtools==1.0.0
@@ -102,31 +102,30 @@ uv tool install yggtools==1.0.0
 ### Create a new library called `my-lib`
 
 ```bash
-yggtools init my-lib
+yggtools init-repo my-lib
 ```
 
-This creates a `my-lib/` directory in the current working directory,
-initialises a git repository, and runs `uv sync` to install all dev
-dependencies.
+This:
+1. Runs `uv init --lib my-lib` to create the `src/` layout.
+2. Adds `yggtools` and all quality tools as dev dependencies.
+3. Patches `pyproject.toml` with ruff, mypy, pytest, and yggtools config.
+4. Writes a `Makefile` that delegates to `yggtools run`.
+5. Creates `tests/`, `work/`, and `.github/workflows/ci.yml`.
+6. Creates a first git commit.
+
+Resulting structure:
 
 ```
 my-lib/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
-├── .gitlab-ci.yml
 ├── .gitignore
 ├── .python-version
 ├── Makefile
 ├── README.md
 ├── pyproject.toml
-├── scripts/
-│   ├── check.sh
-│   ├── check_docstrings.py
-│   ├── code_metrics.py
-│   ├── generate_report.py
-│   ├── publish.sh
-│   └── security_deps.sh
+├── uv.lock
 ├── src/
 │   └── my_lib/
 │       ├── __init__.py
@@ -145,126 +144,106 @@ cd my-lib
 make check
 ```
 
-### Initialise in the current directory
-
-If you are already inside the project directory:
+### Preview without writing anything
 
 ```bash
-mkdir my-lib && cd my-lib
-yggtools init
+yggtools init-repo my-lib --dry-run
 ```
-
-`yggtools init` without a name argument uses the current directory name as
-the project name.
 
 ---
 
 ## 5. Command reference
 
-### `yggtools init`
+### `yggtools init-repo`
 
 ```
-yggtools init [PROJECT_NAME] [OPTIONS]
+yggtools init-repo PROJECT_NAME [OPTIONS]
 ```
 
-Scaffold a new Python package.
+Scaffold a new Python package from scratch.
 
-| Argument / Option | Default | Description |
-|-------------------|---------|-------------|
-| `PROJECT_NAME` | current directory name | Name of the project (used for the directory and `pyproject.toml`) |
+| Option | Default | Description |
+|--------|---------|-------------|
 | `--python VERSION` | `3.12` | Target Python version |
-| `--no-git` | off | Skip `git init` and first commit |
-| `--force` | off | Overwrite an existing project without prompting |
-| `--dry-run` | off | Print what would be created without writing anything |
+| `--no-git` | off | Skip git commit (and CI workflow generation) |
+| `--dry-run` | off | Print planned actions without writing |
+| `--parent-dir PATH` | current directory | Where to create the project |
 
 **Examples:**
 
 ```bash
 # Default — Python 3.12, with git
-yggtools init my-lib
+yggtools init-repo my-lib
 
 # Target Python 3.13
-yggtools init my-lib --python 3.13
+yggtools init-repo my-lib --python 3.13
 
-# Skip git initialisation (no .github/ or .gitlab-ci.yml generated)
-yggtools init my-lib --no-git
+# Skip git and CI files
+yggtools init-repo my-lib --no-git
 
-# Preview what would be created
-yggtools init my-lib --dry-run
-
-# Overwrite an existing project
-yggtools init my-lib --force
-
-# Initialise in the current directory with Python 3.13
-cd my-lib
-yggtools init --python 3.13
+# Preview only
+yggtools init-repo my-lib --dry-run
 ```
 
-**What `--dry-run` prints:**
+**Pipeline steps executed:**
 
-```
-[dry-run] Would create:
-  would create  pyproject.toml
-  would create  Makefile
-  would create  .gitignore
-  would create  README.md
-  would create  src/my_lib/__init__.py
-  would create  src/my_lib/py.typed
-  would create  tests/__init__.py
-  would create  tests/conftest.py
-  would create  work/.gitkeep
-  would create  scripts/check.sh
-  would create  scripts/check_docstrings.py
-  would create  scripts/code_metrics.py
-  would create  scripts/generate_report.py
-  would create  scripts/publish.sh
-  would create  scripts/security_deps.sh
-  would create  .github/workflows/ci.yml
-  would create  .gitlab-ci.yml
-```
+| # | Step | What it does |
+|---|------|-------------|
+| 1 | `uv init --lib` | Creates `src/` layout, `.gitignore`, `.python-version` |
+| 2 | add dev deps | `uv add --dev yggtools <quality tools>` |
+| 3 | patch pyproject | Adds `[tool.ruff]`, `[tool.mypy]`, `[tool.yggtools]` sections |
+| 4 | write Makefile | Delegates all targets to `yggtools run` |
+| 5 | create `tests/` | `__init__.py` and `conftest.py` |
+| 6 | create `work/` | `.gitkeep` |
+| 7 | write CI | `.github/workflows/ci.yml` (skipped with `--no-git`) |
+| 8 | git commit | Initial commit |
 
 ---
 
-### `yggtools check`
+### `yggtools run`
 
 ```
-yggtools check [PATH]
+yggtools run [CHECK_NAME] [OPTIONS]
 ```
 
-Audit a project directory for structural conformance. Checks that required
-directories, scripts, Makefile targets, and dev dependencies are in place.
-Exits with code `1` if any check fails.
+Run quality checks on a project.
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `PATH` | current directory | Project directory to audit |
+| Argument / Option | Default | Description |
+|-------------------|---------|-------------|
+| `CHECK_NAME` | — | Name of a single check to run |
+| `--all` | off | Run all registered checks |
+| `--ci` | off | CI mode: also write `work/report.md` |
+| `--path PATH` | current directory | Project root to audit |
 
 **Examples:**
 
 ```bash
-# Audit the current directory
-yggtools check
+# Run all checks on the current project
+yggtools run --all
 
-# Audit a specific project
-yggtools check ~/projects/my-lib
+# CI mode (same checks + markdown report)
+yggtools run --all --ci
+
+# Run a single check
+yggtools run typecheck
+
+# Run all checks on another project
+yggtools run --all --path ~/projects/my-lib
 ```
 
-**Example output:**
+**Available check names:**
 
-```
-          yggtools check — /home/user/my-lib
-┌──────────────────────┬────────┬─────────────────────────┐
-│ Check                │ Status │ Detail                  │
-├──────────────────────┼────────┼─────────────────────────┤
-│ src/my_lib/          │  PASS  │                         │
-│ tests/               │  PASS  │                         │
-│ scripts/check.sh     │  PASS  │                         │
-│ Makefile             │  PASS  │                         │
-│ dev dependencies     │  PASS  │                         │
-└──────────────────────┴────────┴─────────────────────────┘
-
-All checks passed.
-```
+| Name | Tool |
+|------|------|
+| `format` | `ruff format --check` |
+| `ruff` | `ruff check` |
+| `flake8` | `flake8` |
+| `docstrings` | built-in AST docstring scanner |
+| `typecheck` | `mypy --strict` |
+| `metrics` | built-in CC and logical-line counter |
+| `security-code` | `bandit -r src` |
+| `security-deps` | `pip-audit` on runtime deps |
+| `tests` | `pytest --cov-fail-under=100` |
 
 ---
 
@@ -272,50 +251,68 @@ All checks passed.
 
 ### `pyproject.toml`
 
-Pre-configured with:
-- `hatchling` build backend
-- `src/` layout (`packages = ["src/my_lib"]`)
-- pytest with 100 % coverage enforcement (`--cov-fail-under=100`)
-- mypy in strict mode
-- ruff with all rules enabled, line length 79
-- flake8 with max complexity 10 and Google docstring convention
-- bandit security scanner
-- dev dependency group with all quality tools
+The file created by `uv init --lib` is extended with:
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src/<package> --cov-report=term-missing --cov-fail-under=100"
+cache_dir = "work/.pytest_cache"
+
+[tool.coverage.run]
+data_file = "work/.coverage"
+source = ["src/<package>"]
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+cache_dir = "work/.mypy_cache"
+
+[tool.ruff]
+line-length = 79
+cache-dir = "work/.ruff_cache"
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.flake8]
+max-line-length = 79
+max-complexity = 10
+docstring-convention = "google"
+
+[tool.bandit]
+exclude_dirs = ["tests", "work", ".venv"]
+
+[tool.yggtools.code_metrics]
+paths = ["src/<package>", "tests"]
+max_cyclomatic_complexity = 10
+max_module_logical_lines = 900
+```
 
 ### `Makefile`
 
+All targets delegate to `yggtools run` or standard `uv` commands.
+
 | Target | What it does |
 |--------|-------------|
-| `make format` | Auto-format with ruff |
-| `make lint` | Lint with ruff |
-| `make flake8` | Lint with flake8 |
-| `make docstrings` | Check Google-style docstrings |
-| `make typecheck` | mypy strict type checking |
-| `make metrics` | Cyclomatic complexity and line count |
-| `make security` | bandit (code) + pip-audit (deps) |
-| `make test` | pytest with coverage |
-| `make check` | Full pipeline (local mode, with report) |
-| `make ci` | Full pipeline (CI mode) |
-| `make build` | Build wheel and sdist |
-| `make check-dist` | Validate the built distribution |
-| `make publish` | Publish to PyPI |
-
-### `scripts/`
-
-| Script | Purpose |
-|--------|---------|
-| `check.sh` | Orchestrates the full quality pipeline |
-| `check_docstrings.py` | Verifies Google-style docstrings on all modules |
-| `code_metrics.py` | Measures cyclomatic complexity and logical line counts |
-| `generate_report.py` | Writes `work/report.md` after each pipeline run |
-| `publish.sh` | Wraps `uv build` and `twine` for PyPI publishing |
-| `security_deps.sh` | Runs `pip-audit` on runtime dependencies |
+| `make check` | `uv run yggtools run --all` |
+| `make ci` | `uv run yggtools run --all --ci` |
+| `make format` | `uv run ruff format src tests` |
+| `make test` | `uv run pytest` |
+| `make clean` | Remove `work/` contents (keep `.gitkeep`) |
+| `make build` | `uv build` |
+| `make check-dist` | `uv run twine check dist/*` |
+| `make publish` | `uv run twine upload dist/*` |
 
 ### `work/`
 
-Temporary output directory (gitignored except `.gitkeep`):
-- `.coverage` — coverage data
-- `report.md` — last quality report
+Temporary output directory — gitignored except `.gitkeep`:
+
+- `.coverage` — coverage data file
+- `report.md` — last quality report (CI mode only)
 - `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/` — tool caches
 
 ---
@@ -328,7 +325,7 @@ Run the full pipeline locally:
 make check
 ```
 
-Run in CI mode (same checks, no interactive output):
+Run in CI mode (same checks, writes `work/report.md`):
 
 ```bash
 make ci
@@ -339,66 +336,47 @@ The pipeline runs these checks in order:
 | # | Check | Tool |
 |---|-------|------|
 | 1 | Format | `ruff format --check` |
-| 2 | Lint | `ruff check` |
-| 3 | Flake8 | `flake8` |
-| 4 | Docstrings | `check_docstrings.py` |
+| 2 | Lint (ruff) | `ruff check` |
+| 3 | Lint (flake8) | `flake8` |
+| 4 | Docstrings | Built-in AST scanner |
 | 5 | Type check | `mypy --strict` |
-| 6 | Metrics | `code_metrics.py` (CC ≤ 10, lines ≤ 900) |
+| 6 | Metrics | Built-in (CC ≤ 10, logical lines ≤ 900) |
 | 7 | Security (code) | `bandit -r src` |
 | 8 | Security (deps) | `pip-audit` |
 | 9 | Tests | `pytest --cov-fail-under=100` |
 
-A Markdown report is written to `work/report.md` after each run.
+### Run only a single check
+
+```bash
+yggtools run typecheck
+yggtools run tests
+yggtools run format
+```
 
 ### Auto-format before committing
 
 ```bash
-make format   # auto-fix formatting
-make check    # verify everything passes
-```
-
-### Run only tests
-
-```bash
-make test
-```
-
-### Run only type checking
-
-```bash
-make typecheck
+uv run ruff format src tests
+make check
 ```
 
 ---
 
 ## 8. CI workflows
 
-When `yggtools init` is run without `--no-git`, it generates two CI
-workflow files.
+When `yggtools init-repo` runs without `--no-git`, it writes
+`.github/workflows/ci.yml`.
 
-### GitHub Actions (`.github/workflows/ci.yml`)
+### GitHub Actions
 
 Triggered on push and pull-request to `main`/`master`. Runs `make ci` on
-a matrix of Python 3.12 and 3.13. Uploads `work/report.md` as an artifact
-even on failure.
+Python 3.12 and 3.13 (`fail-fast: false`). Uploads `work/report.md` as an
+artifact after every run, even on failure.
 
 Push your project to GitHub and CI activates automatically:
 
 ```bash
 git remote add origin https://github.com/yourname/my-lib.git
-git push -u origin main
-```
-
-### GitLab CI (`.gitlab-ci.yml`)
-
-Same coverage: two jobs (`quality:3.12`, `quality:3.13`) using
-`python:3.12-slim` and `python:3.13-slim` Docker images. Artifacts kept
-for 30 days.
-
-Push to GitLab:
-
-```bash
-git remote add origin https://gitlab.com/yourname/my-lib.git
 git push -u origin main
 ```
 
@@ -409,21 +387,20 @@ git push -u origin main
 ### Build and validate
 
 ```bash
-make build         # creates dist/my_lib-*.whl and dist/my_lib-*.tar.gz
-make check-dist    # runs twine check on the built files
+make build         # uv build → dist/
+make check-dist    # twine check dist/*
 ```
 
 ### Publish to PyPI
 
-The generated `publish.sh` script wraps `uv build` and `twine upload`.
-
 ```bash
-make publish
+make publish       # twine upload dist/*
 ```
 
-For PyPI Trusted Publishing (OIDC, no token needed), configure your
+For PyPI **Trusted Publishing** (OIDC, no token required), configure your
 publisher on [pypi.org/manage/account/publishing/](https://pypi.org/manage/account/publishing/)
-before the first upload.
+before the first upload, then use the standard `publish.yml` workflow
+pattern.
 
 ---
 
@@ -436,7 +413,7 @@ before the first upload.
 uv tool install yggtools
 
 # 2. Scaffold the project
-yggtools init my-lib --python 3.13
+yggtools init-repo my-lib --python 3.13
 cd my-lib
 
 # 3. Verify the pipeline passes on a clean slate
@@ -452,9 +429,9 @@ code .
 # Write code in src/my_lib/, tests in tests/
 
 # Auto-format
-make format
+uv run ruff format src tests
 
-# Run tests only (fast feedback)
+# Fast feedback — tests only
 make test
 
 # Full pipeline before committing
@@ -469,23 +446,17 @@ git push
 ### Releasing a new version
 
 ```bash
-# 1. Bump the version in pyproject.toml and src/my_lib/__init__.py
+# 1. Bump the version in pyproject.toml
 # 2. Update CHANGELOG.md
 # 3. Run the full pipeline
 make check
 
 # 4. Commit, tag, push — CI publishes to PyPI automatically
-git add pyproject.toml src/my_lib/__init__.py CHANGELOG.md
+git add pyproject.toml CHANGELOG.md
 git commit -m "chore: release v1.1.0"
 git tag v1.1.0
 git push origin main
 git push origin v1.1.0
-```
-
-### Auditing an existing project
-
-```bash
-yggtools check ~/projects/legacy-lib
 ```
 
 ### Updating yggtools itself
@@ -493,3 +464,7 @@ yggtools check ~/projects/legacy-lib
 ```bash
 uv tool upgrade yggtools
 ```
+
+After an upgrade, scaffolded projects automatically benefit from the updated
+quality checks the next time `make check` runs — no files need to be copied
+or updated in the project.

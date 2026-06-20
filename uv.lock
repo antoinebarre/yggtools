@@ -6,12 +6,6 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
-[manifest]
-members = [
-    "my-lib",
-    "yggtools",
-]
-
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -790,45 +784,6 @@ wheels = [
 ]
 
 [[package]]
-name = "my-lib"
-version = "0.1.0"
-source = { editable = "my-lib" }
-
-[package.dev-dependencies]
-dev = [
-    { name = "bandit" },
-    { name = "flake8" },
-    { name = "flake8-bugbear" },
-    { name = "flake8-docstrings" },
-    { name = "flake8-pyproject" },
-    { name = "mypy" },
-    { name = "pep8-naming" },
-    { name = "pip-audit" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "yggtools" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bandit", specifier = ">=1.8" },
-    { name = "flake8", specifier = ">=7" },
-    { name = "flake8-bugbear", specifier = ">=24" },
-    { name = "flake8-docstrings", specifier = ">=1.7" },
-    { name = "flake8-pyproject", specifier = ">=1.2" },
-    { name = "mypy", specifier = ">=1.10" },
-    { name = "pep8-naming", specifier = ">=0.14" },
-    { name = "pip-audit", specifier = ">=2.8" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-cov", specifier = ">=6" },
-    { name = "ruff", specifier = ">=0.4" },
-    { name = "yggtools", editable = "." },
-]
-
-[[package]]
 name = "mypy"
 version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1449,6 +1404,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "twine" },
+    { name = "yggtools" },
 ]
 
 [package.metadata]
@@ -1472,4 +1428,5 @@ dev = [
     { name = "pytest-cov", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.4" },
     { name = "twine", specifier = ">=6" },
+    { name = "yggtools", editable = "." },
 ]

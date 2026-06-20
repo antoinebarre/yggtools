@@ -1,543 +1,425 @@
 # SRS — Software Requirements Specification
 
-**Projet :** yggtools  
-**Version :** 1.3  
-**Date :** 2026-06-13  
-**Auteur :** Antoine Barré  
-**Statut :** Draft
+**Project:** yggtools
+**Version:** 2.0
+**Date:** 2026-06-15
+**Author:** Antoine Barré
+**Status:** Approved
 
 ---
 
-## Table des matières
+## Table of contents
 
 1. [Introduction](#1-introduction)
-2. [Description générale](#2-description-générale)
-3. [Exigences fonctionnelles](#3-exigences-fonctionnelles)
-4. [Exigences non fonctionnelles](#4-exigences-non-fonctionnelles)
-5. [Contraintes système](#5-contraintes-système)
-6. [Exigences sur les scripts embarqués](#6-exigences-sur-les-scripts-embarqués)
-7. [Exigences de test](#7-exigences-de-test)
-8. [Glossaire](#8-glossaire)
+2. [General description](#2-general-description)
+3. [Functional requirements](#3-functional-requirements)
+4. [Non-functional requirements](#4-non-functional-requirements)
+5. [System constraints](#5-system-constraints)
+6. [Test requirements](#6-test-requirements)
+7. [Glossary](#7-glossary)
 
 ---
 
 ## 1. Introduction
 
-### 1.1 Objet
+### 1.1 Purpose
 
-Ce document spécifie les exigences logicielles du projet **yggtools**, un outil en ligne de commande qui étend `uv` pour fournir une couche d'organisation, de scripts de qualité et de pipeline CI reproductible pour les packages Python.
+This document specifies the software requirements for **yggtools**, a
+command-line developer tool that scaffolds opinionated Python packages on
+top of `uv` and provides a built-in quality pipeline accessible through a
+`Makefile`.
 
-### 1.2 Périmètre
+### 1.2 Scope
 
-yggtools couvre :
-- L'initialisation de la structure d'un package Python (`yggtools init`)
-- L'audit de conformité d'un projet existant (`yggtools check`)
-- La mise à jour des fichiers gérés (`yggtools update`)
-- La génération d'un pipeline qualité complet via `Makefile`
-- La fourniture de scripts de qualité, métriques, sécurité et publication
+yggtools covers:
 
-yggtools ne couvre pas :
-- L'exécution directe des outils qualité (ruff, mypy, pytest…) — ceux-ci sont délégués au `Makefile` et aux scripts
-- La gestion des secrets PyPI (responsabilité de l'utilisateur)
-- La création de branches git ou la gestion de workflows GitHub/GitLab
+- Initialising a new Python package (`yggtools init-repo`)
+- Running quality checks on any project (`yggtools run`)
+- Generating CI workflow files for GitHub Actions
 
-### 1.3 Références
+yggtools does not cover:
 
-- [mkforge](https://github.com/antoinebarre/mkforge) — référence de pipeline
-- [uv documentation](https://docs.astral.sh/uv/)
-- [PEP 517/518](https://peps.python.org/pep-0517/) — build system
+- Direct execution of underlying tools (ruff, mypy, pytest…) outside of the
+  `run` command
+- Management of PyPI secrets (user's responsibility)
+- Creating git branches or managing remote workflows
 
-### 1.4 Conventions
+### 1.3 Conventions
 
-- **SHALL** : exigence obligatoire
-- **SHOULD** : exigence recommandée
-- **MAY** : exigence optionnelle
-- Identifiant d'exigence : `REQ-<catégorie>-<numéro>`
+- **SHALL**: mandatory requirement
+- **SHOULD**: recommended requirement
+- **MAY**: optional requirement
+- Requirement identifier: `REQ-<category>-<number>`
 
 ---
 
-## 2. Description générale
+## 2. General description
 
-### 2.1 Perspective produit
+### 2.1 Product perspective
 
-yggtools est un outil de développeur (`dev tool`) destiné à être installé globalement via `uv tool install yggtools`. Il n'est jamais ajouté comme dépendance d'un projet cible.
+yggtools is a developer tool (`dev tool`) installed globally via
+`uv tool install yggtools`. It is added as a dev dependency in scaffolded
+projects so that `make check` delegates to `yggtools run --all`.
 
 ```
-┌──────────────────────────────────────────────┐
-│  Développeur                                  │
-│                                               │
-│  $ yggtools init mylib                         │
-│         │                                     │
-│         ▼                                     │
-│  ┌─────────────┐    génère    ┌────────────┐  │
-│  │  yggtools    │ ──────────►  │  mylib/    │  │
-│  │  (global)   │              │  Makefile  │  │
-│  └─────────────┘              │  scripts/  │  │
-│         │                     │  src/      │  │
-│         │ appelle              │  tests/    │  │
-│         ▼                     │  work/     │  │
-│  ┌─────────────┐              └────────────┘  │
-│  │  uv         │                              │
-│  │  (global)   │                              │
-│  └─────────────┘                              │
-└──────────────────────────────────────────────┘
+Developer
+  │
+  ├─ yggtools init-repo my-lib
+  │       │
+  │       ▼
+  │  uv init --lib my-lib   (step 1, run by yggtools)
+  │       │
+  │       ▼
+  │  my-lib/
+  │  ├── Makefile  (calls: uv run yggtools run --all)
+  │  ├── src/
+  │  ├── tests/
+  │  └── work/
+  │
+  └─ cd my-lib && make check
+          │
+          └─ uv run yggtools run --all
 ```
 
-### 2.2 Fonctions principales
+### 2.2 Main functions
 
-| ID | Fonction |
-|---|---|
-| F-01 | Initialiser un projet Python avec structure standard |
-| F-02 | Générer les fichiers de configuration des outils qualité |
-| F-03 | Installer les scripts de pipeline (`check.sh`, `publish.sh`, etc.) |
-| F-04 | Générer un `Makefile` complet |
-| F-05 | Configurer les dépendances dev via `uv` |
-| F-06 | Auditer la conformité d'un projet existant |
-| F-07 | Mettre à jour les scripts gérés vers la version courante |
-| F-08 | Générer les workflows CI pour GitHub Actions et GitLab CI |
+| ID | Function |
+|----|----------|
+| F-01 | Scaffold a Python package (`init-repo`) |
+| F-02 | Patch `pyproject.toml` with quality tool configuration |
+| F-03 | Generate a `Makefile` that delegates to `yggtools run` |
+| F-04 | Install dev dependencies via `uv add --dev` |
+| F-05 | Run one or all quality checks on any project (`run`) |
+| F-06 | Write a Markdown quality report (`run --ci`) |
+| F-07 | Generate GitHub Actions CI workflow |
 
-### 2.3 Profil utilisateur
+### 2.3 User profile
 
-Développeur Python intermédiaire à expert, familier avec `uv`, les outils de qualité modernes (ruff, mypy) et les workflows basés sur `make`. Utilise macOS, Linux ou WSL.
+Python developer (intermediate to expert), familiar with `uv`, modern
+quality tools (ruff, mypy), and `make`-based workflows. Uses macOS, Linux,
+or WSL.
 
-### 2.4 Hypothèses et dépendances
+### 2.4 Assumptions and dependencies
 
-- `uv` est installé et disponible dans le `PATH`
-- `git` est installé (sauf si `--no-git` est spécifié)
-- L'OS supporte les scripts shell Bash (`/bin/bash`)
-- Python ≥ 3.12 est disponible dans l'environnement `uv`
+- `uv` ≥ 0.5 is installed and in `PATH`
+- `git` is installed (unless `--no-git` is used)
+- Python ≥ 3.12 is available in the uv environment
 
 ---
 
-## 3. Exigences fonctionnelles
+## 3. Functional requirements
 
-### 3.1 `yggtools init`
+### 3.1 `yggtools init-repo`
 
 #### REQ-INIT-01
-yggtools SHALL accepter un argument optionnel `PROJECT_NAME`. Si absent, le nom est déduit du nom du répertoire courant.
+
+`yggtools init-repo` SHALL accept a mandatory `PROJECT_NAME` argument.
 
 #### REQ-INIT-02
-yggtools SHALL créer les répertoires suivants dans le projet cible :
-- `src/<package_name>/`
-- `tests/`
-- `scripts/`
-- `work/`
-- `doc/`
+
+Step 1 SHALL call `uv init --lib PROJECT_NAME --python VERSION` in the
+parent directory. This creates the `src/` layout, `.gitignore`,
+`.python-version`, and `README.md`.
 
 #### REQ-INIT-03
-yggtools SHALL créer un fichier `work/.gitkeep` pour que le dossier `work/` soit tracké par git mais ignoré dans son contenu.
+
+Step 2 SHALL call `uv add --dev` to install `yggtools` itself and all
+required quality tools as dev dependencies of the new project.
 
 #### REQ-INIT-04
-yggtools SHALL créer un `.gitignore` excluant au minimum : `work/*`, `!work/.gitkeep`, `__pycache__/`, `.mypy_cache/`, `dist/`, `*.egg-info/`, `.coverage`, `.env`.
+
+Step 3 SHALL append the following sections to `pyproject.toml` if they are
+absent: `[tool.pytest.ini_options]`, `[tool.coverage.run]`, `[tool.mypy]`,
+`[tool.ruff]`, `[tool.ruff.lint]`, `[tool.ruff.lint.pydocstyle]`,
+`[tool.flake8]`, `[tool.bandit]`, `[tool.yggtools.code_metrics]`.
 
 #### REQ-INIT-05
-yggtools SHALL générer un `pyproject.toml` contenant :
-- Métadonnées projet (`name`, `version`, `description`, `requires-python`)
-- Build system `hatchling`
-- Groupe de dépendances `dev` avec : ruff, flake8, mypy, pytest, pytest-cov, bandit, pip-audit, twine
-- Configuration de ruff (line-length=79, select="ALL", convention Google)
-- Configuration de flake8 (max-complexity=10, max-line-length=79)
-- Configuration mypy (strict=true)
-- Configuration pytest (testpaths=["tests"], cov-fail-under=100)
-- Configuration coverage (data_file dans `work/`)
-- Configuration bandit (exclude_dirs=["tests","work"])
-- Configuration des seuils de métriques (complexity=10, logical_lines=900)
+
+Step 4 SHALL write a `Makefile` whose `check` target calls
+`uv run yggtools run --all` and whose `ci` target calls
+`uv run yggtools run --all --ci`.
 
 #### REQ-INIT-06
-yggtools SHALL générer un `Makefile` avec les cibles : `format`, `format-check`, `lint`, `flake8`, `docstrings`, `typecheck`, `metrics`, `security`, `test`, `check`, `ci`, `clean`, `clean-work`, `build`, `check-dist`, `publish-test`, `publish`.
+
+Step 5 SHALL create `tests/__init__.py` and `tests/conftest.py`.
 
 #### REQ-INIT-07
-yggtools SHALL copier les cinq scripts suivants dans `scripts/` :
-`check.sh`, `check_docstrings.py`, `code_metrics.py`, `security_deps.sh`, `publish.sh`.
+
+Step 6 SHALL create `work/.gitkeep`.
 
 #### REQ-INIT-08
-yggtools SHALL créer un `scripts/__init__.py` vide pour que mypy puisse analyser le répertoire.
+
+Step 7 SHALL generate `.github/workflows/ci.yml` unless `--no-git` is set.
+The workflow SHALL run `make ci` on Python 3.12 and 3.13 with
+`fail-fast: false`, and upload `work/report.md` as an artifact.
 
 #### REQ-INIT-09
-yggtools SHALL créer `src/<package_name>/__init__.py` et `src/<package_name>/py.typed`.
+
+Step 8 SHALL create a git commit unless `--no-git` is set.
 
 #### REQ-INIT-10
-yggtools SHALL créer `tests/__init__.py` et `tests/test_<package_name>.py` avec un test de smoke minimal.
+
+`yggtools init-repo` SHALL support `--dry-run`, which prints the planned
+actions without executing them.
 
 #### REQ-INIT-11
-yggtools SHALL créer un `README.md` minimal avec le nom du projet.
+
+`yggtools init-repo` SHALL support `--no-git`, which skips the git commit
+and the CI workflow generation.
 
 #### REQ-INIT-12
-yggtools SHALL créer un `.python-version` contenant la version Python cible.
+
+`yggtools init-repo` SHALL support `--python VERSION` to set the target
+Python version (default `3.12`).
 
 #### REQ-INIT-13
-yggtools SHALL appeler `uv add --group dev` pour installer les dépendances dev.
+
+`yggtools init-repo` SHALL exit with code `1` and print a clear error
+message if `uv` is not found in `PATH`.
 
 #### REQ-INIT-14
-yggtools SHALL appeler `uv sync` après avoir configuré les dépendances.
 
-#### REQ-INIT-15
-yggtools SHALL, sauf `--no-git`, initialiser un dépôt git et créer un commit initial.
+`yggtools init-repo` SHALL exit with code `1` and print a clear error
+message if any pipeline step fails.
 
-#### REQ-INIT-16
-yggtools SHALL refuser d'écraser un projet existant (présence de `pyproject.toml`) sans l'option `--force`.
+### 3.2 `yggtools run`
 
-#### REQ-INIT-17
-yggtools SHALL afficher un résumé des actions effectuées et les prochaines étapes à l'issue de l'initialisation.
+#### REQ-RUN-01
 
-#### REQ-INIT-18
-yggtools SHALL supporter l'option `--dry-run` qui affiche la liste des fichiers qui seraient créés sans effectuer aucune action.
+`yggtools run --all` SHALL execute every registered quality check in
+registration order and print a PASS/FAIL summary.
 
-#### REQ-INIT-19
-Le nom du package Python SHALL être dérivé du `PROJECT_NAME` en remplaçant les `-` par `_` et en passant en minuscules.
+#### REQ-RUN-02
 
-#### REQ-INIT-20
-yggtools SHALL générer `.github/workflows/ci.yml` (GitHub Actions) et `.gitlab-ci.yml` (GitLab CI) sauf si `--no-git` est spécifié.
+`yggtools run CHECK_NAME` SHALL execute only the named check and exit with
+code `1` if the check fails or the name is unknown.
 
-#### REQ-INIT-21
-Les workflows CI générés SHALL utiliser `make ci` comme commande d'entrée unique du pipeline, assurant la cohérence avec l'exécution locale.
+#### REQ-RUN-03
 
-#### REQ-INIT-22
-Les workflows CI générés SHALL exécuter le pipeline sur une matrice de versions Python incluant la version cible du projet (`{{ python_version }}`) et Python 3.13.
+`yggtools run --all --ci` SHALL additionally write a Markdown quality report
+to `<project>/work/report.md` after all checks complete.
 
-#### REQ-INIT-23
-Les workflows CI générés SHALL publier `work/report.md` en artefact à chaque exécution, que le pipeline réussisse ou échoue.
+#### REQ-RUN-04
 
-#### REQ-INIT-24
-Le workflow GitHub Actions SHALL utiliser `astral-sh/setup-uv@v5` pour l'installation de `uv` et `actions/upload-artifact@v4` pour l'upload du rapport.
+`yggtools run` SHALL exit with code `0` if all executed checks pass, or
+code `1` if any check fails.
 
-#### REQ-INIT-25
-Le workflow GitLab CI SHALL utiliser `pip install uv` dans `before_script` et la directive `artifacts: when: always` pour conserver le rapport 30 jours.
+#### REQ-RUN-05
 
-### 3.2 `yggtools check`
+`yggtools run` SHALL support `--path PATH` to specify the project root
+(default: current directory).
 
-#### REQ-CHECK-01
-`yggtools check` SHALL vérifier la présence de chaque répertoire requis (`src/`, `tests/`, `scripts/`, `work/`, `doc/`).
+#### REQ-RUN-06
 
-#### REQ-CHECK-02
-`yggtools check` SHALL vérifier la présence et l'exécutabilité de `scripts/check.sh`.
+`yggtools run` without `--all` and without a check name SHALL exit with
+code `1` and print a usage error.
 
-#### REQ-CHECK-03
-`yggtools check` SHALL vérifier la présence de chaque script : `check_docstrings.py`, `code_metrics.py`, `security_deps.sh`, `publish.sh`.
+### 3.3 Quality checks
 
-#### REQ-CHECK-04
-`yggtools check` SHALL vérifier que le `Makefile` contient les cibles obligatoires : `check`, `ci`, `test`, `lint`, `typecheck`, `build`, `publish`.
+#### REQ-CHECK-01 — Format
 
-#### REQ-CHECK-05
-`yggtools check` SHALL vérifier que `pyproject.toml` contient un groupe `dev` avec les outils requis.
+The `format` check SHALL run `uv run ruff format --check src tests` and
+report the number of files that would be reformatted.
 
-#### REQ-CHECK-06
-`yggtools check` SHALL vérifier la présence de `.python-version`.
+#### REQ-CHECK-02 — Lint (ruff)
 
-#### REQ-CHECK-07
-`yggtools check` SHALL vérifier que `work/.gitkeep` est présent.
+The `ruff` check SHALL run `uv run ruff check src tests` and report the
+number of errors.
 
-#### REQ-CHECK-08
-`yggtools check` SHALL afficher un rapport PASS/FAIL par item avec un code de sortie 0 (tout OK) ou 1 (au moins un FAIL).
+#### REQ-CHECK-03 — Lint (flake8)
 
-#### REQ-CHECK-09
-Avec l'option `--fix`, `yggtools check` SHALL recopier les scripts manquants depuis les templates embarqués.
+The `flake8` check SHALL run `uv run flake8 src tests` and report the
+number of violations.
 
-### 3.2.1 Rapport de qualité automatique
+#### REQ-CHECK-04 — Docstrings
 
-#### REQ-REPORT-01
-`scripts/check.sh` SHALL générer un rapport Markdown après chaque exécution du pipeline qualité, que toutes les vérifications aient réussi ou non.
+The `docstrings` check SHALL run `uv run flake8 --select=D` to verify
+Google-style docstrings.
 
-#### REQ-REPORT-02
-La localisation du rapport SHALL être contrôlée par la variable d'environnement `REPORT_OUTPUT`. En l'absence de cette variable, le rapport SHALL être écrit dans `work/report.md`.
+#### REQ-CHECK-05 — Type check
 
-#### REQ-REPORT-03
-Le rapport SHALL contenir les sections suivantes :
-1. **Résumé** : nom du projet, version de yggtools, date de génération, nombre de vérifications passées/échouées.
-2. **Résultats des vérifications** : tableau avec statut PASS/FAIL, nom et détail de chaque étape du pipeline.
-3. **Checksums des fichiers** : tableau SHA-256 de chaque fichier source Python dans `src/`.
-4. **Suppressions de sécurité** : liste exhaustive des annotations `# noqa`, `# nosec`, `# type: ignore`, `# pragma: no cover` présentes dans le code, groupées par fichier.
+The `typecheck` check SHALL run `uv run mypy src tests` and report the
+number of errors.
 
-#### REQ-REPORT-04
-Le rapport SHALL être généré par le script `scripts/generate_report.py` appelé par `check.sh` via `uv run python scripts/generate_report.py --output "$REPORT_OUTPUT"`.
+#### REQ-CHECK-06 — Metrics
 
-#### REQ-REPORT-05
-`check.sh` SHALL écrire le code de sortie de chaque vérification dans `work/<nom>.exit` (valeur `0` ou `1`) avant d'appeler `generate_report.py`, afin que celui-ci puisse reconstruire les résultats sans exécuter à nouveau le pipeline.
+The `metrics` check SHALL use the Python AST to measure cyclomatic
+complexity and logical line count for every `.py` file in the configured
+paths. Thresholds SHALL be read from `[tool.yggtools.code_metrics]` in
+`pyproject.toml`.
 
-#### REQ-REPORT-06
-`check.sh` SHALL exclure `report.md` de son nettoyage final (`cleanup`) afin que le rapport subsiste après l'exécution.
+#### REQ-CHECK-07 — Security (code)
 
-#### REQ-REPORT-07
-Si la génération du rapport échoue, `check.sh` SHALL afficher un avertissement mais ne SHALL pas modifier son code de sortie.
+The `security-code` check SHALL run `uv run bandit -r src` and report the
+number of issues.
 
-### 3.3 `yggtools update`
+#### REQ-CHECK-08 — Security (deps)
 
-#### REQ-UPDATE-01
-`yggtools update` SHALL comparer chaque fichier géré (scripts, Makefile) avec la version embarquée dans yggtools.
+The `security-deps` check SHALL export runtime dependencies with
+`uv export --no-dev` and run `pip-audit`. If no runtime dependencies exist,
+the check SHALL pass immediately.
 
-#### REQ-UPDATE-02
-Pour chaque fichier différent, `yggtools update` SHALL afficher un diff et proposer : remplacer / conserver / ignorer.
+#### REQ-CHECK-09 — Tests
 
-#### REQ-UPDATE-03
-Avec l'option `--deps`, `yggtools update` SHALL mettre à jour les versions minimales des dépendances dev dans `pyproject.toml`.
+The `tests` check SHALL run `uv run pytest` and report the summary line.
+
+### 3.4 Registry
+
+#### REQ-REG-01
+
+Adding a new check SHALL require only: implementing a function that matches
+the `CheckFn` protocol and decorating it with `@register("name")`. No
+changes to the runner, CLI, or any other existing module SHALL be required.
+
+#### REQ-REG-02
+
+`registered_checks()` SHALL return check names in registration order.
 
 ---
 
-## 4. Exigences non fonctionnelles
+## 4. Non-functional requirements
 
 ### 4.1 Performance
 
 #### REQ-PERF-01
-`yggtools init` SHALL se terminer en moins de 60 secondes sur une connexion internet standard (hors temps de téléchargement des dépendances pip par uv).
+
+`yggtools init-repo` SHALL complete in under 120 seconds on a standard
+internet connection (excluding uv dependency download time).
 
 #### REQ-PERF-02
-`yggtools check` SHALL se terminer en moins de 2 secondes.
 
-### 4.2 Fiabilité
+`yggtools run --all` on the yggtools repository itself SHALL complete in
+under 60 seconds.
+
+### 4.2 Reliability
 
 #### REQ-REL-01
-En cas d'échec partiel de `yggtools init` (ex. uv non disponible), yggtools SHALL afficher un message d'erreur clair indiquant la cause et SHALL ne pas laisser de répertoire partiellement créé.
+
+Each quality check function SHALL not raise exceptions. Failures SHALL be
+captured and returned as a `CheckResult` with `passed=False`.
 
 #### REQ-REL-02
-`scripts/publish.sh` SHALL garantir la suppression de `work/dist/` en toutes circonstances (trap EXIT).
 
-### 4.3 Utilisabilité
+If a pipeline step in `init-repo` fails, yggtools SHALL exit with code `1`
+and print the step name and error detail.
+
+### 4.3 Usability
 
 #### REQ-USE-01
-Toute sortie terminal SHALL utiliser des couleurs pour distinguer succès (vert), avertissement (jaune) et erreur (rouge).
+
+Terminal output SHALL use colours to distinguish success (green) and
+failure (red).
 
 #### REQ-USE-02
-`yggtools --help` et `yggtools <command> --help` SHALL afficher une aide claire avec la liste des options.
 
-#### REQ-USE-03
-yggtools SHALL fournir une autocomplétion shell (bash, zsh, fish) via `yggtools --install-completion`.
+`yggtools --help` and `yggtools <command> --help` SHALL display clear help
+with all options listed.
 
-### 4.4 Maintenabilité
+### 4.4 Maintainability
 
 #### REQ-MAIN-01
-Le code de yggtools SHALL respecter les mêmes standards qualité que ceux qu'il impose aux projets cibles (ruff, mypy strict, couverture 100%).
+
+yggtools SHALL maintain 100% test coverage (branches included).
 
 #### REQ-MAIN-02
-Chaque module Python de yggtools SHALL avoir une couverture de tests ≥ 100%.
 
-### 4.5 Portabilité
+All public functions and classes SHALL have Google-style docstrings.
+
+#### REQ-MAIN-03
+
+No module SHALL exceed 500 lines.
+
+#### REQ-MAIN-04
+
+No function SHALL have a cyclomatic complexity above 10.
+
+### 4.5 Portability
 
 #### REQ-PORT-01
-yggtools SHALL fonctionner sur macOS (≥ 13), Linux (Ubuntu ≥ 22.04), et Windows via WSL2.
 
-#### REQ-PORT-02
-Les scripts shell générés SHALL utiliser `#!/usr/bin/env bash` et fonctionner avec Bash ≥ 4.
+yggtools SHALL run on macOS (≥ 13) and Linux (Ubuntu ≥ 22.04).
 
-### 4.6 Intégration continue du projet yggtools lui-même
+### 4.6 yggtools own CI
 
 #### REQ-DEVCI-01
-Le dépôt yggtools SHALL disposer d'un workflow GitHub Actions exécutant `make ci` sur chaque push et pull request vers `main` / `master`.
+
+The yggtools repository SHALL have a GitHub Actions workflow running
+`make ci` on every push and pull-request to `main`/`master`.
 
 #### REQ-DEVCI-02
-Le workflow CI de yggtools SHALL tester sur une matrice Python 3.12 et 3.13 avec `fail-fast: false`.
+
+The CI workflow SHALL test on Python 3.12 and 3.13 with `fail-fast: false`.
 
 #### REQ-DEVCI-03
-Le workflow CI SHALL uploader `work/report.md` comme artefact à chaque exécution, que le pipeline réussisse ou échoue.
+
+The CI workflow SHALL upload `work/report.md` as an artifact after every
+run, even on failure.
 
 #### REQ-DEVCI-04
-Le dépôt yggtools SHALL disposer d'un workflow de publication qui se déclenche sur la création d'un tag `v*.*.*`.
 
-#### REQ-DEVCI-05
-Le workflow de publication SHALL exécuter `make ci` comme gate qualité avant tout build ou upload.
-
-#### REQ-DEVCI-06
-Le workflow de publication SHALL utiliser le mécanisme **Trusted Publishing (OIDC)** de PyPI via `pypa/gh-action-pypi-publish`, sans secret de token explicite dans le dépôt.
-
-#### REQ-DEVCI-07
-Le workflow de publication SHALL valider le package avec `twine check` avant l'upload.
+The yggtools repository SHALL have a publish workflow triggered on tag
+`v*.*.*`, using PyPI Trusted Publishing (OIDC) without any explicit secret.
 
 ---
 
-## 5. Contraintes système
+## 5. System constraints
 
-### 5.1 Environnement d'exécution
-
-| Composant | Version minimale |
-|---|---|
+| Component | Minimum version |
+|-----------|----------------|
 | Python | 3.12 |
 | uv | 0.5 |
 | git | 2.30 |
-| Bash | 4.0 |
 
-### 5.2 Installation
-
-yggtools SHALL s'installer via `uv tool install yggtools` sans nécessiter de droits administrateurs.
-
-### 5.3 Absence de dépendances runtime dans les projets cibles
-
-yggtools NE SHALL PAS apparaître dans `dependencies` (ni dans `dev`) d'un projet qu'il a initialisé.
+yggtools SHALL install via `uv tool install yggtools` without requiring
+administrator rights.
 
 ---
 
-## 6. Exigences sur les scripts embarqués
-
-### 6.1 `scripts/check.sh`
-
-#### REQ-SCR-01
-`check.sh` SHALL exécuter les 9 vérifications dans l'ordre suivant :
-format → lint (ruff) → flake8 → docstrings → typecheck → metrics → security (bandit) → security-deps (pip-audit) → test (pytest+coverage).
-
-#### REQ-SCR-02
-`check.sh` SHALL supporter le mode `--ci` dans lequel le format est vérifié sans modification du code.
-
-#### REQ-SCR-03
-`check.sh` SHALL écrire les logs de chaque vérification dans des fichiers séparés dans `work/`.
-
-#### REQ-SCR-04
-`check.sh` SHALL afficher un résumé coloré PASS/FAIL par vérification.
-
-#### REQ-SCR-05
-`check.sh` SHALL, en cas d'échec, afficher le détail des logs des vérifications échouées.
-
-#### REQ-SCR-06
-`check.sh` SHALL retourner un code de sortie égal au nombre de vérifications échouées.
-
-#### REQ-SCR-07
-`check.sh` SHALL écrire le code de sortie de chaque vérification dans un fichier sentinelle `work/<nom>.exit` (contenu : `0` si PASS, `1` si FAIL) pour permettre au rapport de reconstituer les résultats.
-
-#### REQ-SCR-08
-`check.sh` SHALL appeler `scripts/generate_report.py` en fin de pipeline et afficher l'emplacement du rapport généré.
-
-### 6.2 `scripts/generate_report.py`
-
-#### REQ-SCR-09
-`generate_report.py` SHALL être un script autonome (sans import de `yggtools`) afin de pouvoir fonctionner dans tout projet généré par yggtools, indépendamment de l'installation globale de l'outil.
-
-#### REQ-SCR-09a
-`generate_report.py` SHALL accepter l'option `--output <chemin>` pour contrôler l'emplacement du fichier Markdown généré.
-
-#### REQ-SCR-09b
-`generate_report.py` SHALL lire les fichiers `work/<nom>.exit` et `work/<nom>.log` pour reconstruire les résultats du pipeline sans ré-exécuter les vérifications.
-
-#### REQ-SCR-09c
-`generate_report.py` SHALL utiliser `mkforge` (PyPI) pour produire le rendu Markdown structuré avec table des matières, tableaux et sections.
-
-#### REQ-SCR-09d
-`generate_report.py` SHALL calculer le SHA-256 de chaque fichier Python dans `src/` et l'inclure dans la section checksums du rapport.
-
-#### REQ-SCR-09e
-`generate_report.py` SHALL scanner `src/`, `tests/` et `scripts/` à la recherche de toutes les annotations de suppression inline et les inclure dans la section sécurité du rapport.
-
-### 6.3 `scripts/check_docstrings.py`
-
-#### REQ-SCR-10
-`check_docstrings.py` SHALL analyser `src/`, `tests/` et `scripts/` via l'AST Python.
-
-#### REQ-SCR-11
-`check_docstrings.py` SHALL signaler comme violation toute fonction privée (`_xxx`) sans docstring.
-
-#### REQ-SCR-12
-`check_docstrings.py` SHALL signaler comme violation toute fonction de test (`test_xxx`) dont le docstring ne contient pas `"Requirement:"`.
-
-#### REQ-SCR-13
-`check_docstrings.py` SHALL afficher les violations au format `path:line: name: message`.
-
-### 6.4 `scripts/code_metrics.py`
-
-#### REQ-SCR-20
-`code_metrics.py` SHALL calculer la complexité cyclomatique de chaque fonction/méthode.
-
-#### REQ-SCR-21
-`code_metrics.py` SHALL calculer le nombre de lignes logiques par module.
-
-#### REQ-SCR-22
-`code_metrics.py` SHALL lire les seuils depuis `pyproject.toml` (`[tool.metrics]`).
-
-#### REQ-SCR-23
-`code_metrics.py` SHALL retourner code 1 si un seuil est dépassé.
-
-### 6.5 `scripts/security_deps.sh`
-
-#### REQ-SCR-30
-`security_deps.sh` SHALL exporter les dépendances runtime dans `work/requirements.txt`.
-
-#### REQ-SCR-31
-`security_deps.sh` SHALL passer sans erreur si le projet n'a aucune dépendance runtime.
-
-#### REQ-SCR-32
-`security_deps.sh` SHALL exécuter `pip-audit --strict` sur les dépendances exportées.
-
-### 6.6 `scripts/publish.sh`
-
-#### REQ-SCR-40
-`publish.sh` SHALL accepter un paramètre `ACTION` parmi : `build`, `check-dist`, `publish-test`, `publish`.
-
-#### REQ-SCR-41
-`publish.sh` SHALL construire le package dans `work/dist/` via `uv build`.
-
-#### REQ-SCR-42
-`publish.sh` SHALL valider le package avec `twine check` avant toute publication.
-
-#### REQ-SCR-43
-`publish.sh` SHALL supprimer `work/dist/` à la fin de l'exécution (succès ou échec) via `trap`.
-
-#### REQ-SCR-44
-`publish.sh` SHALL publier sur TestPyPI avec l'action `publish-test` et sur PyPI avec `publish`.
-
----
-
-## 7. Exigences de test
-
-### 7.1 Tests unitaires des modules yggtools
+## 6. Test requirements
 
 #### REQ-TEST-01
-Chaque module Python de yggtools (`scaffold.py`, `renderer.py`, `uv_runner.py`, `init.py`, `check.py`, `update.py`, `suppressions.py`, `report.py`) SHALL avoir des tests unitaires couvrant 100% des branches.
 
-#### REQ-TEST-04
-La génération des fichiers CI SHALL être testée : présence de `.github/workflows/ci.yml` et `.gitlab-ci.yml` avec `make ci`, les deux versions Python, et leur absence quand `--no-git` est actif.
+Every module in `src/yggtools/` SHALL have unit tests with 100% branch
+coverage.
 
 #### REQ-TEST-02
-Les tests SHALL utiliser `tmp_path` (pytest) pour isoler les opérations sur le système de fichiers.
+
+Each pipeline step in `repo_init/steps.py` SHALL be tested in isolation
+using a `RepoContext` built from `tmp_path`.
 
 #### REQ-TEST-03
-Les appels à `uv` (subprocess) SHALL être mockés dans les tests unitaires.
 
-### 7.2 Tests des scripts embarqués
+All `uv` and `git` subprocess calls SHALL be mocked in unit tests.
 
-#### REQ-TEST-10
-`check_docstrings.py` SHALL être testé avec des cas de fixtures Python synthétiques (fonctions avec/sans docstring, tests avec/sans "Requirement:").
+#### REQ-TEST-04
 
-#### REQ-TEST-11
-`code_metrics.py` SHALL être testé avec des fixtures de code Python dont la complexité et les lignes logiques sont connues.
+The Registry SHALL be tested: `@register`, `run_one`, `run_all`,
+`registered_checks`.
 
-#### REQ-TEST-12
-`publish.sh` SHALL être testé via un projet minimal dans `tmp_path` vérifiant :
-- La création de `work/dist/` avec les artefacts
-- La suppression de `work/dist/` après exécution
-- Le comportement avec `ACTION=build` (pas d'upload)
+#### REQ-TEST-05
 
-#### REQ-TEST-13
-`security_deps.sh` SHALL être testé avec un projet sans dépendances runtime (exit 0 attendu).
+Each check function SHALL be tested with mocked subprocess output covering
+pass and fail paths.
 
-#### REQ-TEST-14
-`suppressions.py` SHALL être testé avec tous les types d'annotation (`noqa`, `nosec`, `type: ignore`, `pragma: no cover`), les cas de déduplication, les fichiers inaccessibles, et les chemins relatifs.
+#### REQ-TEST-06
 
-#### REQ-TEST-15
-`report.py` SHALL être testé pour chaque chapitre du rapport, la génération de checksums SHA-256, le rendu complet, et l'écriture sur disque avec création des répertoires parents.
-
-### 7.3 Tests d'intégration
-
-#### REQ-TEST-20
-Un test d'intégration SHALL exécuter `yggtools init` dans un `tmp_path`, puis vérifier que `make check` retourne 0.
-
-#### REQ-TEST-21
-Un test d'intégration SHALL vérifier que `yggtools check` retourne 0 sur un projet fraîchement initialisé.
-
-### 7.4 Couverture
-
-#### REQ-TEST-30
-La couverture globale de yggtools SHALL être ≥ 100% (branches incluses).
+Test function docstrings SHALL use the prefix `Requirement:` to state what
+requirement is being verified.
 
 ---
 
-## 8. Glossaire
+## 7. Glossary
 
-| Terme | Définition |
-|---|---|
-| **dev tool** | Outil installé globalement pour le développeur, non présent dans les dépendances des projets |
-| **scaffold** | Création de la structure de répertoires et fichiers d'un projet |
-| **pipeline qualité** | Séquence de vérifications automatiques (format, lint, type, test, sécurité) |
-| **work/** | Répertoire de sorties temporaires (logs, coverage, dist) ignoré par `.gitignore` |
-| **template** | Fichier avec variables Jinja2 embarqué dans yggtools et rendu lors de l'init |
-| **uv** | Gestionnaire de packages et d'environnements Python développé par Astral |
-| **hatchling** | Backend de build Python moderne, utilisé par défaut avec uv |
-| **mkforge** | Bibliothèque PyPI fournissant un DSL Python pour la génération de Markdown structuré |
-| **suppression inline** | Annotation de commentaire (`# noqa`, `# nosec`, `# type: ignore`, `# pragma: no cover`) désactivant une règle de vérification sur une ligne de code |
-| **checksum** | Empreinte SHA-256 d'un fichier source permettant de détecter toute modification ultérieure |
-| **rapport de qualité** | Fichier Markdown généré automatiquement par `check.sh`, documentant les résultats du pipeline, les checksums et les suppressions |
-| **fichier sentinelle** | Fichier `work/<nom>.exit` contenant `0` (PASS) ou `1` (FAIL), écrit par `check.sh` pour chaque étape du pipeline |
+| Term | Definition |
+|------|------------|
+| **dev tool** | Tool installed globally for the developer, not present in project dependencies |
+| **scaffold** | Creation of directory and file structure for a new project |
+| **quality pipeline** | Ordered sequence of automated checks (format, lint, type, test, security) |
+| **work/** | Temporary output directory (gitignored except `.gitkeep`) |
+| **Registry** | Dict mapping check names to `CheckFn` functions; populated via `@register` |
+| **Strategy** | Each check module exports exactly one `CheckFn` function |
+| **Pipeline** | Ordered list of `PipelineStep` objects executed by `run_pipeline` |
+| **uv** | Python package and environment manager developed by Astral |
+| **hatchling** | Modern Python build backend, used by default with uv |
+| **CheckFn** | Protocol: `(project_dir: Path) -> CheckResult` |
+| **RepoContext** | Frozen dataclass holding all `init-repo` inputs |

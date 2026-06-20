@@ -28,7 +28,11 @@ def check_typecheck(project_dir: Path) -> CheckResult:
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode == 0:
-        return CheckResult(name="typecheck", passed=True, detail=output or "Success")
+        return CheckResult(
+            name="typecheck",
+            passed=True,
+            detail=output or "Success",
+        )
     lines = [ln for ln in output.splitlines() if ": error:" in ln]
     count = len(lines)
     return CheckResult(

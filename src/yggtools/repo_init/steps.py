@@ -12,6 +12,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+import jinja2
+
 from yggtools.uv import (
     DEV_DEPS,
     CommandError,
@@ -116,17 +118,20 @@ def step_patch_pyproject(ctx: RepoContext) -> None:
     additions: list[str] = []
 
     if "pytest" not in existing.get("tool", {}):
-        additions.append(f"""
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--tb=short --cov=src/{package_name} --cov-report=term-missing --cov-fail-under=100"
-pythonpath = ["src"]
-cache_dir = "work/.pytest_cache"
-
-[tool.coverage.run]
-data_file = "work/.coverage"
-source = ["src/{package_name}"]
-""")
+        cov_opts = (
+            f'"--tb=short --cov=src/{package_name}'
+            ' --cov-report=term-missing --cov-fail-under=100"'
+        )
+        additions.append(
+            f"\n[tool.pytest.ini_options]\n"
+            f'testpaths = ["tests"]\n'
+            f"addopts = {cov_opts}\n"
+            f'pythonpath = ["src"]\n'
+            f'cache_dir = "work/.pytest_cache"\n'
+            f"\n[tool.coverage.run]\n"
+            f'data_file = "work/.coverage"\n'
+            f'source = ["src/{package_name}"]\n',
+        )
 
     if "mypy" not in existing.get("tool", {}):
         additions.append("""
@@ -205,10 +210,12 @@ def step_write_tests_dir(ctx: RepoContext) -> None:
     tests_dir = ctx.project_dir / "tests"
     tests_dir.mkdir(exist_ok=True)
     (tests_dir / "__init__.py").write_text(
-        '"""Test suite."""\n', encoding="utf-8"
+        '"""Test suite."""\n',
+        encoding="utf-8",
     )
     (tests_dir / "conftest.py").write_text(
-        '"""Pytest configuration."""\n', encoding="utf-8"
+        '"""Pytest configuration."""\n',
+        encoding="utf-8",
     )
 
 
@@ -237,17 +244,20 @@ def step_write_ci(ctx: RepoContext) -> None:
         return
     python_version = ctx.python_version
     github_content = _render_template(
-        "github_ci.yml.tmpl", python_version=python_version
+        "github_ci.yml.tmpl",
+        python_version=python_version,
     )
     github_dir = ctx.project_dir / ".github" / "workflows"
     github_dir.mkdir(parents=True, exist_ok=True)
     (github_dir / "ci.yml").write_text(github_content, encoding="utf-8")
 
     gitlab_content = _render_template(
-        "gitlab_ci.yml.tmpl", python_version=python_version
+        "gitlab_ci.yml.tmpl",
+        python_version=python_version,
     )
     (ctx.project_dir / ".gitlab-ci.yml").write_text(
-        gitlab_content, encoding="utf-8"
+        gitlab_content,
+        encoding="utf-8",
     )
 
 
@@ -264,6 +274,22 @@ def step_git_commit(ctx: RepoContext) -> None:
     git_commit(ctx.project_dir, "chore: yggtools init-repo")
 
 
+def step_write_claude_md(ctx: RepoContext) -> None:
+    """Render and write CLAUDE.md into the project directory.
+
+    CLAUDE.md contains the coding standards and Claude Code instructions
+    for the scaffolded project.
+
+    Args:
+        ctx: Pipeline context.
+    """
+    if ctx.dry_run:
+        return
+    package_name = ctx.project_name.replace("-", "_")
+    content = _render_template("CLAUDE.md.tmpl", package_name=package_name)
+    (ctx.project_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
+
+
 def _render_template(name: str, **variables: str) -> str:
     """Load and render a Jinja2 template from the repo_init/templates package.
 
@@ -274,8 +300,8 @@ def _render_template(name: str, **variables: str) -> str:
     Returns:
         Rendered template string.
     """
-    import jinja2
-
     pkg = importlib.resources.files("yggtools.repo_init.templates")
     source = pkg.joinpath(name).read_text(encoding="utf-8")
-    return jinja2.Template(source, undefined=jinja2.StrictUndefined).render(**variables)
+    return jinja2.Template(source, undefined=jinja2.StrictUndefined).render(
+        **variables,
+    )

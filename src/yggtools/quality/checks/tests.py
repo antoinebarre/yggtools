@@ -29,7 +29,11 @@ def check_tests(project_dir: Path) -> CheckResult:
     )
     output = (result.stdout + result.stderr).strip()
     summary = next(
-        (ln for ln in reversed(output.splitlines()) if "passed" in ln or "failed" in ln or "error" in ln),
+        (
+            ln
+            for ln in reversed(output.splitlines())
+            if "passed" in ln or "failed" in ln or "error" in ln
+        ),
         output.splitlines()[-1] if output.splitlines() else "",
     )
     if result.returncode == 0:

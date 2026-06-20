@@ -27,7 +27,11 @@ def check_security_code(project_dir: Path) -> CheckResult:
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode == 0:
-        return CheckResult(name="security-code", passed=True, detail="0 issue(s)")
+        return CheckResult(
+            name="security-code",
+            passed=True,
+            detail="0 issue(s)",
+        )
     lines = [ln for ln in output.splitlines() if ln.startswith(">>")]
     count = len(lines)
     return CheckResult(
@@ -58,7 +62,9 @@ def check_security_deps(project_dir: Path) -> CheckResult:
     output = (result.stdout + result.stderr).strip()
     if result.returncode == 0:
         return CheckResult(
-            name="security-deps", passed=True, detail="No vulnerabilities found"
+            name="security-deps",
+            passed=True,
+            detail="No vulnerabilities found",
         )
     lines = [ln for ln in output.splitlines() if "vulnerability" in ln.lower()]
     count = len(lines) or 1
