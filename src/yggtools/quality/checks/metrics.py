@@ -58,6 +58,39 @@ class _FileChecksum:
     size_bytes: int
 
 
+@dataclass(frozen=True)
+class _FunctionMetric:
+    """Metrics for a function or method."""
+
+    name: str
+    line: int
+    cyclomatic_complexity: int
+    logical_lines: int
+
+
+@dataclass(frozen=True)
+class _FileMetric:
+    """Metrics collected for one Python file."""
+
+    path: Path
+    physical_lines: int
+    logical_lines: int
+    function_count: int
+    class_count: int
+    max_cyclomatic_complexity: int
+    functions: tuple[_FunctionMetric, ...]
+    parse_error: str | None = None
+
+
+@dataclass(frozen=True)
+class _MetricsAnalysis:
+    """Complete metrics analysis for configured files."""
+
+    checksums: tuple[_FileChecksum, ...]
+    file_metrics: tuple[_FileMetric, ...]
+    violations: tuple[_Violation, ...]
+
+
 def _read_metrics_section(pyproject: Path) -> dict[str, object]:
     """Read the ``[tool.yggtools.code_metrics]`` section from pyproject.toml.
 
@@ -203,6 +236,230 @@ def _write_checksum_manifest(
     return manifest, manifest_checksum, digest
 
 
+def _analyze_metrics(
+    python_files: list[Path],
+    checksums: list[_FileChecksum],
+    cfg: _MetricsConfig,
+) -> _MetricsAnalysis:
+    """Run the metrics analyzer strategy for configured Python files."""
+    file_metrics = tuple(_analyze_file(path) for path in python_files)
+    violations = tuple(
+        violation
+        for metric in file_metrics
+        for violation in _violations_for_file(metric, cfg)
+    )
+    return _MetricsAnalysis(
+        checksums=tuple(checksums),
+        file_metrics=file_metrics,
+        violations=violations,
+    )
+
+
+def _analysis_summary(analysis: _MetricsAnalysis) -> dict[str, object]:
+    """Build aggregate metrics for console and reports."""
+    parsed_files = _parsed_file_metrics(analysis)
+    return {
+        "files_checksummed": len(analysis.checksums),
+        "python_files_analyzed": len(analysis.file_metrics),
+        "python_files_parsed": len(parsed_files),
+        "python_files_with_parse_errors": (
+            len(analysis.file_metrics) - len(parsed_files)
+        ),
+        "total_physical_lines": sum(
+            metric.physical_lines for metric in parsed_files
+        ),
+        "total_logical_lines": sum(
+            metric.logical_lines for metric in parsed_files
+        ),
+        "total_functions": sum(
+            metric.function_count for metric in parsed_files
+        ),
+        "total_classes": sum(metric.class_count for metric in parsed_files),
+        "max_cyclomatic_complexity": max(
+            (metric.max_cyclomatic_complexity for metric in parsed_files),
+            default=0,
+        ),
+        "violations": len(analysis.violations),
+    }
+
+
+def _parsed_file_metrics(analysis: _MetricsAnalysis) -> list[_FileMetric]:
+    """Return file metrics that parsed successfully."""
+    return [
+        metric
+        for metric in analysis.file_metrics
+        if metric.parse_error is None
+    ]
+
+
+def _file_metric_record(
+    metric: _FileMetric,
+    project_dir: Path,
+) -> dict[str, object]:
+    """Serialize a file metric for reports."""
+    return {
+        "path": _relative_to(metric.path, project_dir),
+        "physical_lines": metric.physical_lines,
+        "logical_lines": metric.logical_lines,
+        "function_count": metric.function_count,
+        "class_count": metric.class_count,
+        "max_cyclomatic_complexity": metric.max_cyclomatic_complexity,
+        "parse_error": metric.parse_error,
+    }
+
+
+def _function_metric_record(
+    metric: _FileMetric,
+    function: _FunctionMetric,
+    project_dir: Path,
+) -> dict[str, object]:
+    """Serialize a function metric for reports."""
+    return {
+        "path": _relative_to(metric.path, project_dir),
+        "name": function.name,
+        "line": function.line,
+        "cyclomatic_complexity": function.cyclomatic_complexity,
+        "logical_lines": function.logical_lines,
+    }
+
+
+def _top_functions(
+    analysis: _MetricsAnalysis,
+    project_dir: Path,
+    *,
+    limit: int = 20,
+) -> list[dict[str, object]]:
+    """Return the most complex functions."""
+    functions = [
+        (metric, function)
+        for metric in analysis.file_metrics
+        for function in metric.functions
+    ]
+    sorted_functions = sorted(
+        functions,
+        key=lambda item: (
+            item[1].cyclomatic_complexity,
+            item[1].logical_lines,
+            _relative_to(item[0].path, project_dir),
+        ),
+        reverse=True,
+    )
+    return [
+        _function_metric_record(metric, function, project_dir)
+        for metric, function in sorted_functions[:limit]
+    ]
+
+
+def _function_metrics(
+    analysis: _MetricsAnalysis,
+    project_dir: Path,
+) -> list[dict[str, object]]:
+    """Return all function metrics for reports."""
+    return [
+        _function_metric_record(metric, function, project_dir)
+        for metric in analysis.file_metrics
+        for function in metric.functions
+    ]
+
+
+def _metrics_metadata(
+    analysis: _MetricsAnalysis,
+    project_dir: Path,
+    cfg: _MetricsConfig,
+    manifest_digest: str,
+) -> dict[str, object]:
+    """Serialize complete metrics metadata for reports."""
+    return {
+        "summary": _analysis_summary(analysis),
+        "thresholds": {
+            "max_cyclomatic_complexity": cfg.max_cyclomatic_complexity,
+            "max_module_logical_lines": cfg.max_module_logical_lines,
+        },
+        "files": [
+            _file_metric_record(metric, project_dir)
+            for metric in analysis.file_metrics
+        ],
+        "functions": _function_metrics(analysis, project_dir),
+        "top_complex_functions": _top_functions(analysis, project_dir),
+        "manifest_sha256": manifest_digest,
+        "checksums": [record.__dict__ for record in analysis.checksums],
+    }
+
+
+def _metric_detail(summary: dict[str, object], violations: int) -> str:
+    """Build the compact table detail for metrics."""
+    status = "pass" if violations == 0 else f"{violations} violation(s)"
+    return (
+        f"{status}; "
+        f"{summary['python_files_parsed']} file(s), "
+        f"{summary['total_logical_lines']} logical line(s), "
+        f"{summary['total_functions']} function(s), "
+        f"max CC {summary['max_cyclomatic_complexity']}"
+    )
+
+
+def _metrics_console_output(
+    analysis: _MetricsAnalysis,
+    project_dir: Path,
+) -> str:
+    """Build a human-readable metrics report for CI console output."""
+    summary = _analysis_summary(analysis)
+    lines = [
+        "Metrics summary",
+        f"- Python files parsed: {summary['python_files_parsed']}",
+        f"- Parse errors: {summary['python_files_with_parse_errors']}",
+        f"- Physical lines: {summary['total_physical_lines']}",
+        f"- Logical lines: {summary['total_logical_lines']}",
+        f"- Functions: {summary['total_functions']}",
+        f"- Classes: {summary['total_classes']}",
+        f"- Max cyclomatic complexity: {summary['max_cyclomatic_complexity']}",
+        f"- Violations: {summary['violations']}",
+        "",
+        "File metrics",
+        "path | physical | logical | functions | classes | max CC",
+    ]
+    lines.extend(
+        " | ".join(
+            [
+                _relative_to(metric.path, project_dir),
+                str(metric.physical_lines),
+                str(metric.logical_lines),
+                str(metric.function_count),
+                str(metric.class_count),
+                str(metric.max_cyclomatic_complexity),
+            ],
+        )
+        for metric in analysis.file_metrics
+    )
+    lines += [
+        "",
+        "Top complex functions",
+        "path | name | line | CC | logical",
+    ]
+    for record in _top_functions(analysis, project_dir, limit=10):
+        lines.append(
+            " | ".join(
+                [
+                    str(record["path"]),
+                    str(record["name"]),
+                    str(record["line"]),
+                    str(record["cyclomatic_complexity"]),
+                    str(record["logical_lines"]),
+                ],
+            ),
+        )
+    lines += [
+        "",
+        "Metrics summary",
+        f"- Python files parsed: {summary['python_files_parsed']}",
+        f"- Logical lines: {summary['total_logical_lines']}",
+        f"- Functions: {summary['total_functions']}",
+        f"- Max cyclomatic complexity: {summary['max_cyclomatic_complexity']}",
+        f"- Violations: {summary['violations']}",
+    ]
+    return "\n".join(lines)
+
+
 def _cyclomatic_complexity(node: ast.AST) -> int:
     """Compute cyclomatic complexity of an AST node.
 
@@ -235,25 +492,9 @@ def _cyclomatic_complexity(node: ast.AST) -> int:
     return count
 
 
-def _check_file(path: Path, cfg: _MetricsConfig) -> list[_Violation]:
-    """Check a single Python file for metrics violations.
-
-    Args:
-        path: Path to the Python source file.
-        cfg: Metrics configuration with thresholds.
-
-    Returns:
-        List of violations found in the file.
-    """
-    try:
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
-        return []
-
-    violations: list[_Violation] = []
-
-    logical_lines = sum(
+def _logical_lines(tree: ast.AST) -> int:
+    """Count logical statement lines in an AST."""
+    return sum(
         1
         for node in ast.walk(tree)
         if isinstance(node, ast.stmt)
@@ -262,31 +503,103 @@ def _check_file(path: Path, cfg: _MetricsConfig) -> list[_Violation]:
             (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
         )
     )
-    if logical_lines > cfg.max_module_logical_lines:
+
+
+def _function_logical_lines(node: ast.AST) -> int:
+    """Count logical statement lines inside a function."""
+    return sum(
+        1
+        for child in ast.walk(node)
+        if isinstance(child, ast.stmt)
+        and child is not node
+        and not isinstance(
+            child,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+        )
+    )
+
+
+def _analyze_file(path: Path) -> _FileMetric:
+    """Collect metrics for one Python file.
+
+    Args:
+        path: Path to the Python source file.
+
+    Returns:
+        Full metric record for the file.
+    """
+    source = path.read_text(encoding="utf-8")
+    physical_lines = len(source.splitlines())
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        return _FileMetric(
+            path=path,
+            physical_lines=physical_lines,
+            logical_lines=0,
+            function_count=0,
+            class_count=0,
+            max_cyclomatic_complexity=0,
+            functions=(),
+            parse_error=str(exc),
+        )
+
+    functions = tuple(
+        _FunctionMetric(
+            name=node.name,
+            line=node.lineno,
+            cyclomatic_complexity=_cyclomatic_complexity(node),
+            logical_lines=_function_logical_lines(node),
+        )
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+    return _FileMetric(
+        path=path,
+        physical_lines=physical_lines,
+        logical_lines=_logical_lines(tree),
+        function_count=len(functions),
+        class_count=sum(
+            1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        ),
+        max_cyclomatic_complexity=max(
+            (fn.cyclomatic_complexity for fn in functions),
+            default=0,
+        ),
+        functions=functions,
+    )
+
+
+def _violations_for_file(
+    metric: _FileMetric,
+    cfg: _MetricsConfig,
+) -> list[_Violation]:
+    """Return threshold violations for a file metric."""
+    if metric.parse_error is not None:
+        return []
+    violations: list[_Violation] = []
+    if metric.logical_lines > cfg.max_module_logical_lines:
         violations.append(
             _Violation(
-                path=path,
+                path=metric.path,
                 message=(
-                    f"module has {logical_lines} logical lines "
+                    f"module has {metric.logical_lines} logical lines "
                     f"(max {cfg.max_module_logical_lines})"
                 ),
             ),
         )
-
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            cc = _cyclomatic_complexity(node)
-            if cc > cfg.max_cyclomatic_complexity:
-                violations.append(
-                    _Violation(
-                        path=path,
-                        message=(
-                            f"{node.name}() CC={cc} "
-                            f"(max {cfg.max_cyclomatic_complexity})"
-                        ),
-                    ),
-                )
-
+    violations.extend(
+        _Violation(
+            path=metric.path,
+            message=(
+                f"{function.name}() "
+                f"CC={function.cyclomatic_complexity} "
+                f"(max {cfg.max_cyclomatic_complexity})"
+            ),
+        )
+        for function in metric.functions
+        if function.cyclomatic_complexity > cfg.max_cyclomatic_complexity
+    )
     return violations
 
 
@@ -304,7 +617,6 @@ def check_metrics(project_dir: Path) -> CheckResult:
         CheckResult listing violations or confirming all metrics pass.
     """
     cfg = _load_config(project_dir)
-    violations: list[_Violation] = []
     configured_files = _iter_configured_files(cfg)
     checksums = [
         _checksum_file(path, project_dir) for path in configured_files
@@ -315,43 +627,43 @@ def check_metrics(project_dir: Path) -> CheckResult:
     )
 
     python_files = [path for path in configured_files if path.suffix == ".py"]
-    for py_file in python_files:
-        violations.extend(_check_file(py_file, cfg))
+    analysis = _analyze_metrics(python_files, checksums, cfg)
+    summary = _analysis_summary(analysis)
 
-    metadata: dict[str, object] = {
-        "files_checksummed": len(checksums),
-        "python_files_analyzed": len(python_files),
-        "manifest_sha256": manifest_digest,
-        "checksums": [record.__dict__ for record in checksums],
-    }
+    metadata = _metrics_metadata(
+        analysis,
+        project_dir,
+        cfg,
+        manifest_digest,
+    )
     artifacts = (manifest, manifest_checksum)
 
-    if not violations:
+    if not analysis.violations:
         return CheckResult(
             name="metrics",
             passed=True,
-            detail=(
-                f"All metrics pass; {len(checksums)} file checksum(s) recorded"
-            ),
+            detail=_metric_detail(summary, 0),
             metadata=metadata,
             artifacts=artifacts,
+            stdout=_metrics_console_output(analysis, project_dir),
         )
 
-    first = violations[0]
+    first = analysis.violations[0]
     metadata["violations"] = [
         {
             "path": _relative_to(violation.path, project_dir),
             "message": violation.message,
         }
-        for violation in violations
+        for violation in analysis.violations
     ]
     return CheckResult(
         name="metrics",
         passed=False,
         detail=(
-            f"{len(violations)} violation(s) — "
+            f"{len(analysis.violations)} violation(s) — "
             f"{first.path.name}: {first.message}"
         ),
         metadata=metadata,
         artifacts=artifacts,
+        stdout=_metrics_console_output(analysis, project_dir),
     )

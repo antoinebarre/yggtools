@@ -20,6 +20,7 @@ from yggtools.quality.checks.security import (
 )
 from yggtools.quality.checks.tests import _parse_summary, check_tests
 from yggtools.quality.checks.typecheck import check_typecheck
+from yggtools.quality.runner import CheckResult
 from yggtools.uv import RunResult
 
 
@@ -265,8 +266,8 @@ class TestCheckTests:
 class TestCheckMetrics:
     """Tests for check_metrics (pure Python, no subprocess)."""
 
-    def test_passes_for_simple_module(self, tmp_path: Path) -> None:
-        """Requirement: check_metrics must pass when thresholds are met."""
+    def _simple_metrics_result(self, tmp_path: Path) -> CheckResult:
+        """Return metrics result for a minimal module."""
         src = tmp_path / "src" / "mypkg"
         src.mkdir(parents=True)
         (src / "simple.py").write_text(
@@ -280,8 +281,27 @@ class TestCheckMetrics:
             "max_cyclomatic_complexity = 10\n"
             "max_module_logical_lines = 900\n",
         )
-        result = check_metrics(tmp_path)
+        return check_metrics(tmp_path)
+
+    def test_passes_for_simple_module(self, tmp_path: Path) -> None:
+        """Requirement: check_metrics must pass when thresholds are met."""
+        result = self._simple_metrics_result(tmp_path)
         assert result.passed
+        summary = result.metadata["summary"]
+        assert isinstance(summary, dict)
+        assert summary["python_files_parsed"] == 1
+        assert summary["total_functions"] == 1
+        assert summary["max_cyclomatic_complexity"] == 1
+
+    def test_reports_function_metrics(self, tmp_path: Path) -> None:
+        """Requirement: metrics report must include function measurements."""
+        result = self._simple_metrics_result(tmp_path)
+        functions = result.metadata["functions"]
+        assert isinstance(functions, list)
+        assert functions[0]["name"] == "add"
+        assert functions[0]["cyclomatic_complexity"] == 1
+        assert "Metrics summary" in result.stdout
+        assert "src/mypkg/simple.py" in result.stdout
 
     def _write_pyproject(
         self,
@@ -421,6 +441,9 @@ class TestCheckMetrics:
         paths = {record["path"] for record in payload}
         assert result.passed
         assert paths == {"src/data.txt", "src/module.py"}
+        files = result.metadata["files"]
+        assert isinstance(files, list)
+        assert files[0]["logical_lines"] == 1
         assert all(record["sha256"] for record in payload)
         digest = hashlib.sha256(
             manifest_json.read_text(encoding="utf-8").encode("utf-8"),
