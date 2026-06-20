@@ -9,115 +9,33 @@ cache:
     - .venv/
 
 stages:
-  - static
-  - test
-  - audit
+  - quality
 
 .base:
   before_script:
     - pip install uv --quiet
     - uv sync
 
-# ── static ────────────────────────────────────────────────────────────────────
-
-"lint:{{ python_version }}":
+"quality:{{ python_version }}":
   extends: .base
-  stage: static
+  stage: quality
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools run format --ci
-    - uv run yggtools run ruff --ci
-    - uv run yggtools run flake8 --ci
-
-"lint:3.13":
-  extends: .base
-  stage: static
-  image: python:3.13-slim
-  script:
-    - uv run yggtools run format --ci
-    - uv run yggtools run ruff --ci
-    - uv run yggtools run flake8 --ci
-
-"typecheck:{{ python_version }}":
-  extends: .base
-  stage: static
-  image: python:{{ python_version }}-slim
-  script:
-    - uv run yggtools run typecheck --ci
-
-"typecheck:3.13":
-  extends: .base
-  stage: static
-  image: python:3.13-slim
-  script:
-    - uv run yggtools run typecheck --ci
-
-"metrics:{{ python_version }}":
-  extends: .base
-  stage: static
-  image: python:{{ python_version }}-slim
-  script:
-    - uv run yggtools run metrics --ci
-
-"metrics:3.13":
-  extends: .base
-  stage: static
-  image: python:3.13-slim
-  script:
-    - uv run yggtools run metrics --ci
-
-"security-code:{{ python_version }}":
-  extends: .base
-  stage: static
-  image: python:{{ python_version }}-slim
-  script:
-    - uv run yggtools run security-code --ci
-
-"security-code:3.13":
-  extends: .base
-  stage: static
-  image: python:3.13-slim
-  script:
-    - uv run yggtools run security-code --ci
-
-# ── test ──────────────────────────────────────────────────────────────────────
-
-"tests:{{ python_version }}":
-  extends: .base
-  stage: test
-  image: python:{{ python_version }}-slim
-  script:
-    - uv run yggtools run tests --ci
+    - uv run yggtools pipeline
   artifacts:
     when: always
     paths:
-      - work/.coverage
+      - work/reports/
     expire_in: 7 days
 
-"tests:3.13":
+"quality:3.13":
   extends: .base
-  stage: test
+  stage: quality
   image: python:3.13-slim
   script:
-    - uv run yggtools run tests --ci
+    - uv run yggtools pipeline
   artifacts:
     when: always
     paths:
-      - work/.coverage
+      - work/reports/
     expire_in: 7 days
-
-# ── audit ─────────────────────────────────────────────────────────────────────
-
-"security-deps:{{ python_version }}":
-  extends: .base
-  stage: audit
-  image: python:{{ python_version }}-slim
-  script:
-    - uv run yggtools run security-deps --ci
-
-"security-deps:3.13":
-  extends: .base
-  stage: audit
-  image: python:3.13-slim
-  script:
-    - uv run yggtools run security-deps --ci

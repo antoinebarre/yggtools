@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint (Python ${{ matrix.python-version }})
+  quality:
+    name: Quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -24,103 +24,12 @@ jobs:
           enable-cache: true
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
-      - name: Format check
-        run: uv run yggtools run format --ci
-      - name: Ruff
-        run: uv run yggtools run ruff --ci
-      - name: Flake8
-        run: uv run yggtools run flake8 --ci
-
-  typecheck:
-    name: Type check (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
-      - name: Mypy
-        run: uv run yggtools run typecheck --ci
-
-  metrics:
-    name: Metrics (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
-      - name: Code metrics
-        run: uv run yggtools run metrics --ci
-
-  security-code:
-    name: Security — code (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
-      - name: Bandit
-        run: uv run yggtools run security-code --ci
-
-  tests:
-    name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    needs: [lint, typecheck, metrics, security-code]
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
-      - name: Pytest + coverage
-        run: uv run yggtools run tests --ci
-      - name: Upload coverage report
+      - name: Quality pipeline
+        run: uv run yggtools pipeline
+      - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-py${{ matrix.python-version }}
-          path: work/.coverage
+          name: quality-py${{ matrix.python-version }}
+          path: work/reports/
           if-no-files-found: ignore
-
-  security-deps:
-    name: Security — deps (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    needs: [tests]
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
-      - name: pip-audit
-        run: uv run yggtools run security-deps --ci

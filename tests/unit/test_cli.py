@@ -17,11 +17,174 @@ from yggtools.uv import UvNotFoundError
 _runner = CliRunner()
 
 
+def _dummy_result(
+    name: str = "dummy",
+    *,
+    passed: bool = True,
+) -> CheckResult:
+    """Build a minimal CheckResult for testing.
+
+    Args:
+        name: Check name.
+        passed: Whether the check passed.
+
+    Returns:
+        CheckResult stub.
+    """
+    return CheckResult(
+        name=name,
+        passed=passed,
+        detail="ok" if passed else "bad",
+        duration_seconds=0.1,
+    )
+
+
+class TestPipelineCommand:
+    """Tests for the pipeline command."""
+
+    def test_exits_0_when_all_pass(self, tmp_path: Path) -> None:
+        """Requirement: pipeline must exit 0 when all checks pass."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("format"),
+        )
+        try:
+            result = _runner.invoke(
+                app,
+                ["pipeline", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert result.exit_code == 0
+        assert "PASS" in result.output
+
+    def test_exits_1_when_any_fails(self, tmp_path: Path) -> None:
+        """Requirement: pipeline must exit 1 when any check fails."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("format", passed=False),
+        )
+        try:
+            result = _runner.invoke(
+                app,
+                ["pipeline", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+
+    def test_writes_artifacts(self, tmp_path: Path) -> None:
+        """Requirement: pipeline must write JSON artifacts."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("format"),
+        )
+        try:
+            _runner.invoke(
+                app,
+                ["pipeline", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        reports = tmp_path / "work" / "reports"
+        assert (reports / "format.json").exists()
+        assert (reports / "pipeline.json").exists()
+
+    def test_custom_report_dir(self, tmp_path: Path) -> None:
+        """Requirement: --report-dir overrides artifact location."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("format"),
+        )
+        try:
+            _runner.invoke(
+                app,
+                [
+                    "pipeline",
+                    "--path",
+                    str(tmp_path),
+                    "--report-dir",
+                    "custom",
+                ],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert (tmp_path / "custom" / "format.json").exists()
+
+    def test_failure_details_show_command_and_context(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: failure details must show command and stderr."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: CheckResult(
+                name="format",
+                passed=False,
+                detail="bad",
+                command=("uv", "run", "ruff"),
+                stderr="error line 1\nerror line 2",
+                duration_seconds=0.1,
+            ),
+        )
+        try:
+            result = _runner.invoke(
+                app,
+                ["pipeline", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert result.exit_code == 1
+        assert "uv run ruff" in result.output
+        assert "error line" in result.output
+
+    def test_output_shows_progress_and_dashboard(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: pipeline output must show stage and check."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["format"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("format"),
+        )
+        try:
+            result = _runner.invoke(
+                app,
+                ["pipeline", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert "Linters" in result.output
+        assert "format" in result.output
+
+
 class TestInitRepo:
     """Tests for the init-repo command."""
 
-    def test_dry_run_exits_0_without_writing(self, tmp_path: Path) -> None:
-        """Requirement: init-repo --dry-run must exit 0 without writing."""
+    def test_dry_run_exits_0_without_writing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init-repo --dry-run must exit 0."""
         result = _runner.invoke(
             app,
             ["init-repo", "my-lib", "--dry-run"],
@@ -30,16 +193,19 @@ class TestInitRepo:
         assert not (tmp_path / "my-lib").exists()
 
     def test_exits_1_when_uv_not_found(self) -> None:
-        """Requirement: init-repo must exit 1 when uv is not available."""
+        """Requirement: init-repo must exit 1 when uv is absent."""
         with patch(
             "yggtools.cli.check_uv_available",
             side_effect=UvNotFoundError("no uv"),
         ):
-            result = _runner.invoke(app, ["init-repo", "my-lib"])
+            result = _runner.invoke(
+                app,
+                ["init-repo", "my-lib"],
+            )
         assert result.exit_code == 1
 
     def test_exits_1_on_step_error(self) -> None:
-        """Requirement: init-repo must exit 1 when a pipeline step fails."""
+        """Requirement: init-repo must exit 1 on step failure."""
         with (
             patch("yggtools.cli.check_uv_available"),
             patch(
@@ -47,26 +213,35 @@ class TestInitRepo:
                 side_effect=StepError("step failed"),
             ),
         ):
-            result = _runner.invoke(app, ["init-repo", "my-lib"])
+            result = _runner.invoke(
+                app,
+                ["init-repo", "my-lib"],
+            )
         assert result.exit_code == 1
 
     def test_exits_0_on_success(self) -> None:
-        """Requirement: init-repo must exit 0 when all steps succeed."""
+        """Requirement: init-repo must exit 0 on success."""
         with (
             patch("yggtools.cli.check_uv_available"),
             patch("yggtools.cli._run_with_progress"),
         ):
-            result = _runner.invoke(app, ["init-repo", "my-lib"])
+            result = _runner.invoke(
+                app,
+                ["init-repo", "my-lib"],
+            )
         assert result.exit_code == 0
 
     def test_dry_run_output_lists_planned_actions(self) -> None:
         """Requirement: dry-run output must list planned actions."""
-        result = _runner.invoke(app, ["init-repo", "my-lib", "--dry-run"])
+        result = _runner.invoke(
+            app,
+            ["init-repo", "my-lib", "--dry-run"],
+        )
         assert "uv init" in result.output
         assert result.exit_code == 0
 
     def test_exits_1_on_unexpected_exception(self) -> None:
-        """Requirement: init-repo must exit 1 on any unexpected exception."""
+        """Requirement: init-repo must exit 1 on unexpected error."""
         with (
             patch("yggtools.cli.check_uv_available"),
             patch(
@@ -74,11 +249,17 @@ class TestInitRepo:
                 side_effect=RuntimeError("boom"),
             ),
         ):
-            result = _runner.invoke(app, ["init-repo", "my-lib"])
+            result = _runner.invoke(
+                app,
+                ["init-repo", "my-lib"],
+            )
         assert result.exit_code == 1
 
-    def test_run_with_progress_executes_step_fn(self, tmp_path: Path) -> None:
-        """Requirement: _run_with_progress must call each step's fn."""
+    def test_run_with_progress_executes_step_fn(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: _run_with_progress must call each step fn."""
         called: list[str] = []
         ctx = RepoContext(
             project_name="my-lib",
@@ -93,7 +274,7 @@ class TestInitRepo:
         assert called == ["stub"]
 
     def test_no_git_flag_suppresses_ci_in_dry_run(self) -> None:
-        """Requirement: --no-git dry-run must omit CI workflow actions."""
+        """Requirement: --no-git must omit CI workflow actions."""
         result = _runner.invoke(
             app,
             ["init-repo", "my-lib", "--dry-run", "--no-git"],
@@ -104,40 +285,61 @@ class TestInitRepo:
 class TestInit:
     """Tests for the init command (in-place scaffold)."""
 
-    def test_exits_1_when_no_pyproject(self, tmp_path: Path) -> None:
-        """Requirement: init must exit 1 when pyproject.toml is absent."""
-        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+    def test_exits_1_when_no_pyproject(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init must exit 1 without pyproject.toml."""
+        with patch(
+            "yggtools.cli.Path.cwd",
+            return_value=tmp_path,
+        ):
             result = _runner.invoke(app, ["init"])
         assert result.exit_code == 1
 
     def test_dry_run_exits_0(self, tmp_path: Path) -> None:
-        """Requirement: init --dry-run must exit 0 without writing."""
+        """Requirement: init --dry-run must exit 0."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
-        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+        with patch(
+            "yggtools.cli.Path.cwd",
+            return_value=tmp_path,
+        ):
             result = _runner.invoke(app, ["init", "--dry-run"])
         assert result.exit_code == 0
 
-    def test_dry_run_does_not_mention_uv_init(self, tmp_path: Path) -> None:
-        """Requirement: init --dry-run must not mention uv init --lib."""
+    def test_dry_run_does_not_mention_uv_init(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init --dry-run must not mention uv init."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
-        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+        with patch(
+            "yggtools.cli.Path.cwd",
+            return_value=tmp_path,
+        ):
             result = _runner.invoke(app, ["init", "--dry-run"])
         assert "uv init" not in result.output
 
-    def test_exits_1_when_uv_not_found(self, tmp_path: Path) -> None:
-        """Requirement: init must exit 1 when uv is not available."""
+    def test_exits_1_when_uv_not_found(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init must exit 1 when uv is absent."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli.Path.cwd",
+                return_value=tmp_path,
+            ),
             patch(
                 "yggtools.cli.check_uv_available",
                 side_effect=UvNotFoundError("no uv"),
@@ -147,27 +349,36 @@ class TestInit:
         assert result.exit_code == 1
 
     def test_exits_0_on_success(self, tmp_path: Path) -> None:
-        """Requirement: init must exit 0 when all steps succeed."""
+        """Requirement: init must exit 0 on success."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli.Path.cwd",
+                return_value=tmp_path,
+            ),
             patch("yggtools.cli.check_uv_available"),
             patch("yggtools.cli._run_with_progress"),
         ):
             result = _runner.invoke(app, ["init"])
         assert result.exit_code == 0
 
-    def test_exits_1_on_step_error(self, tmp_path: Path) -> None:
-        """Requirement: init must exit 1 when a pipeline step fails."""
+    def test_exits_1_on_step_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init must exit 1 on step failure."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli.Path.cwd",
+                return_value=tmp_path,
+            ),
             patch("yggtools.cli.check_uv_available"),
             patch(
                 "yggtools.cli._run_with_progress",
@@ -177,14 +388,20 @@ class TestInit:
             result = _runner.invoke(app, ["init"])
         assert result.exit_code == 1
 
-    def test_exits_1_on_unexpected_exception(self, tmp_path: Path) -> None:
-        """Requirement: init must exit 1 on any unexpected exception."""
+    def test_exits_1_on_unexpected_exception(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init must exit 1 on unexpected error."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli.Path.cwd",
+                return_value=tmp_path,
+            ),
             patch("yggtools.cli.check_uv_available"),
             patch(
                 "yggtools.cli._run_with_progress",
@@ -194,8 +411,11 @@ class TestInit:
             result = _runner.invoke(app, ["init"])
         assert result.exit_code == 1
 
-    def test_uses_steps_init_not_steps_full(self, tmp_path: Path) -> None:
-        """Requirement: init must pass STEPS_INIT (no uv init step)."""
+    def test_uses_steps_init_not_steps_full(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: init must use STEPS_INIT (no uv init)."""
         (tmp_path / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
@@ -206,7 +426,7 @@ class TestInit:
             ctx: RepoContext,
             steps: list[PipelineStep] | None = None,
         ) -> None:
-            """Capture the steps argument passed to _run_with_progress.
+            """Capture the steps argument.
 
             Args:
                 ctx: Pipeline context (ignored).
@@ -216,7 +436,10 @@ class TestInit:
                 received_steps.extend(steps)
 
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli.Path.cwd",
+                return_value=tmp_path,
+            ),
             patch("yggtools.cli.check_uv_available"),
             patch(
                 "yggtools.cli._run_with_progress",
@@ -234,25 +457,31 @@ class TestRun:
     """Tests for the run command."""
 
     def test_exits_1_without_check_or_all_flag(self) -> None:
-        """Requirement: run without arguments must exit 1 with usage error."""
+        """Requirement: run without arguments must exit 1."""
         result = _runner.invoke(app, ["run"])
         assert result.exit_code == 1
 
-    def test_exits_1_on_unknown_check(self, tmp_path: Path) -> None:
-        """Requirement: run with unknown check name must exit 1."""
+    def test_exits_1_on_unknown_check(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: run with unknown check must exit 1."""
         result = _runner.invoke(
             app,
             ["run", "__nonexistent__", "--path", str(tmp_path)],
         )
         assert result.exit_code == 1
 
-    def test_run_all_exits_0_when_all_pass(self, tmp_path: Path) -> None:
-        """Requirement: run --all must exit 0 when all checks pass."""
+    def test_run_all_exits_0_when_all_pass(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: run --all must exit 0 when all pass."""
         original = dict(_REGISTRY)
         _REGISTRY.clear()
         _REGISTRY["dummy"] = cast(
             "CheckFn",
-            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
+            lambda _p: _dummy_result("dummy"),
         )
         try:
             result = _runner.invoke(
@@ -264,13 +493,16 @@ class TestRun:
             _REGISTRY.update(original)
         assert result.exit_code == 0
 
-    def test_run_all_exits_1_when_any_fails(self, tmp_path: Path) -> None:
-        """Requirement: run --all must exit 1 when any check fails."""
+    def test_run_all_exits_1_when_any_fails(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: run --all must exit 1 when any fails."""
         original = dict(_REGISTRY)
         _REGISTRY.clear()
         _REGISTRY["dummy"] = cast(
             "CheckFn",
-            lambda _p: CheckResult(name="dummy", passed=False, detail="bad"),
+            lambda _p: _dummy_result("dummy", passed=False),
         )
         try:
             result = _runner.invoke(
@@ -282,54 +514,66 @@ class TestRun:
             _REGISTRY.update(original)
         assert result.exit_code == 1
 
-    def test_ci_mode_writes_json_contract(self, tmp_path: Path) -> None:
-        """Requirement: run --ci must write a JSON contract."""
-        original = dict(_REGISTRY)
-        _REGISTRY.clear()
-        _REGISTRY["dummy"] = cast(
-            "CheckFn",
-            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
-        )
-        try:
-            _runner.invoke(
-                app,
-                ["run", "--all", "--ci", "--path", str(tmp_path)],
-            )
-        finally:
-            _REGISTRY.clear()
-            _REGISTRY.update(original)
-        assert (tmp_path / "work" / "ci" / "results" / "dummy.json").exists()
-
-    def test_ci_mode_writes_json_checksum(self, tmp_path: Path) -> None:
-        """Requirement: run --ci must write a checksum per JSON contract."""
-        original = dict(_REGISTRY)
-        _REGISTRY.clear()
-        _REGISTRY["dummy"] = cast(
-            "CheckFn",
-            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
-        )
-        try:
-            _runner.invoke(
-                app,
-                ["run", "dummy", "--ci", "--path", str(tmp_path)],
-            )
-        finally:
-            _REGISTRY.clear()
-            _REGISTRY.update(original)
-        assert (
-            tmp_path / "work" / "ci" / "results" / "dummy.json.sha256"
-        ).exists()
-
-    def test_ci_report_dir_is_relative_to_project(
+    def test_always_writes_json_artifacts(
         self,
         tmp_path: Path,
     ) -> None:
-        """Requirement: relative --report-dir must be under project path."""
+        """Requirement: run must always write JSON artifacts."""
         original = dict(_REGISTRY)
         _REGISTRY.clear()
         _REGISTRY["dummy"] = cast(
             "CheckFn",
-            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
+            lambda _p: _dummy_result("dummy"),
+        )
+        try:
+            _runner.invoke(
+                app,
+                ["run", "dummy", "--path", str(tmp_path)],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        reports = tmp_path / "work" / "reports"
+        assert (reports / "dummy.json").exists()
+        assert (reports / "dummy.json.sha256").exists()
+
+    def test_ci_flag_accepted_as_noop(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: --ci flag must be accepted without error."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["dummy"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("dummy"),
+        )
+        try:
+            result = _runner.invoke(
+                app,
+                [
+                    "run",
+                    "dummy",
+                    "--ci",
+                    "--path",
+                    str(tmp_path),
+                ],
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(original)
+        assert result.exit_code == 0
+
+    def test_report_dir_relative(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: relative --report-dir must be under project."""
+        original = dict(_REGISTRY)
+        _REGISTRY.clear()
+        _REGISTRY["dummy"] = cast(
+            "CheckFn",
+            lambda _p: _dummy_result("dummy"),
         )
         try:
             _runner.invoke(
@@ -337,7 +581,6 @@ class TestRun:
                 [
                     "run",
                     "dummy",
-                    "--ci",
                     "--report-dir",
                     "custom-reports",
                     "--path",
@@ -349,14 +592,17 @@ class TestRun:
             _REGISTRY.update(original)
         assert (tmp_path / "custom-reports" / "dummy.json").exists()
 
-    def test_ci_report_dir_accepts_absolute_path(self, tmp_path: Path) -> None:
-        """Requirement: absolute --report-dir must be used unchanged."""
+    def test_report_dir_absolute(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: absolute --report-dir must be used as-is."""
         output_dir = tmp_path / "absolute-reports"
         original = dict(_REGISTRY)
         _REGISTRY.clear()
         _REGISTRY["dummy"] = cast(
             "CheckFn",
-            lambda _p: CheckResult(name="dummy", passed=True, detail="ok"),
+            lambda _p: _dummy_result("dummy"),
         )
         try:
             _runner.invoke(
@@ -364,7 +610,6 @@ class TestRun:
                 [
                     "run",
                     "dummy",
-                    "--ci",
                     "--report-dir",
                     str(output_dir),
                     "--path",
@@ -380,11 +625,30 @@ class TestRun:
         self,
         tmp_path: Path,
     ) -> None:
-        """Requirement: CI summary must include JSON path and checksum."""
+        """Requirement: summary must include JSON path and checksum."""
         result = CheckResult(
             name="dummy",
             passed=True,
             detail="ok",
+            command=("uv", "run", "dummy"),
+            metadata={
+                "summary": {
+                    "python_files_parsed": 2,
+                    "total_logical_lines": 10,
+                    "total_functions": 3,
+                    "total_classes": 1,
+                    "max_cyclomatic_complexity": 4,
+                    "violations": 0,
+                },
+                "top_complex_functions": [
+                    {
+                        "path": "src/a.py",
+                        "line": 12,
+                        "name": "work",
+                        "cyclomatic_complexity": 4,
+                    },
+                ],
+            },
         )
         with patch("yggtools.cli._console") as console:
             _print_run_summary(
@@ -392,7 +656,7 @@ class TestRun:
                 tmp_path,
                 {
                     "dummy": (
-                        tmp_path / "work" / "ci" / "results" / "dummy.json",
+                        tmp_path / "work" / "reports" / "dummy.json",
                         "abc123",
                     ),
                 },
@@ -403,14 +667,46 @@ class TestRun:
             if call.args
         )
         assert "PASS" in printed
-        assert "work/ci/results/dummy.json" in printed
+        assert "uv run dummy" in printed
+        assert "files=2" in printed
+        assert "CC=4 src/a.py:12 work" in printed
+        assert "work/reports/dummy.json" in printed
         assert "abc123" in printed
 
-    def test_print_run_summary_includes_short_failure_context(
+    def test_print_run_summary_shortens_long_top_item(
         self,
         tmp_path: Path,
     ) -> None:
-        """Requirement: failed checks must print short context only."""
+        """Requirement: long top fields must be shortened."""
+        result = CheckResult(
+            name="dummy",
+            passed=True,
+            detail="ok",
+            metadata={
+                "top_complex_functions": [
+                    {
+                        "path": "src/very/deep/path/to/a/module.py",
+                        "line": 12,
+                        "name": ("very_long_function_name_that_should_wrap"),
+                        "cyclomatic_complexity": 4,
+                    },
+                ],
+            },
+        )
+        with patch("yggtools.cli._console") as console:
+            _print_run_summary([result], tmp_path, {})
+        printed = "\n".join(
+            str(call.args[0])
+            for call in console.print.call_args_list
+            if call.args
+        )
+        assert "…" in printed
+
+    def test_print_run_summary_includes_failure_context(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: failed checks must print short context."""
         result = CheckResult(
             name="dummy",
             passed=False,
@@ -421,7 +717,12 @@ class TestRun:
             _print_run_summary(
                 [result],
                 tmp_path,
-                {"dummy": (Path("/outside/dummy.json"), "abc123")},
+                {
+                    "dummy": (
+                        Path("/outside/dummy.json"),
+                        "abc123",
+                    ),
+                },
             )
         printed = "\n".join(
             str(call.args[0])
@@ -431,3 +732,25 @@ class TestRun:
         assert "FAIL" in printed
         assert "/outside/dummy.json" in printed
         assert "second" in printed
+
+    def test_print_run_summary_handles_plain_top_item(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: summary handles simple top values."""
+        result = CheckResult(
+            name="dummy",
+            passed=True,
+            detail="ok",
+            metadata={
+                "top_complex_functions": ["plain"],
+            },
+        )
+        with patch("yggtools.cli._console") as console:
+            _print_run_summary([result], tmp_path, {})
+        printed = "\n".join(
+            str(call.args[0])
+            for call in console.print.call_args_list
+            if call.args
+        )
+        assert "plain" in printed

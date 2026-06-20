@@ -10,7 +10,7 @@ format:
 	uv run ruff format src tests
 
 check: clean
-	uv run yggtools run --all
+	uv run yggtools pipeline
 
 test: clean
 	uv run pytest
@@ -32,4 +32,4 @@ build: clean
 	uv build --out-dir dist/
 
 ci: clean
-	uv run yggtools run --all --ci
+	uv run yggtools pipeline
