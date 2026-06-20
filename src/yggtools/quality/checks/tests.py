@@ -42,6 +42,31 @@ def _parse_summary(output: str) -> str:
     return counts or coverage or (lines[-1] if lines else "")
 
 
+def _parse_test_findings(output: str) -> list[dict[str, object]]:
+    """Extract structured findings from pytest failure output.
+
+    Parses ``FAILED path::test_name`` lines from pytest output.
+
+    Args:
+        output: Combined stdout and stderr from the pytest run.
+
+    Returns:
+        List of finding dicts with ``path`` and ``message`` keys.
+    """
+    pattern = re.compile(r"FAILED\s+(?P<path>[^:]+)::(?P<test>.+)")
+    findings: list[dict[str, object]] = []
+    for line in output.splitlines():
+        match = pattern.search(line)
+        if match:
+            findings.append(
+                {
+                    "path": match.group("path"),
+                    "message": f"FAILED {match.group('test')}",
+                }
+            )
+    return findings
+
+
 @register("tests")
 def check_tests(project_dir: Path) -> CheckResult:
     """Run the test suite with pytest and enforce 100 % coverage.
@@ -54,7 +79,8 @@ def check_tests(project_dir: Path) -> CheckResult:
         project_dir: Root directory of the project under audit.
 
     Returns:
-        CheckResult with a compact summary combining pass counts and coverage.
+        CheckResult with a compact summary combining pass counts and
+        coverage.
     """
     args = ["run", "pytest"]
     result = run_uv(
@@ -73,6 +99,7 @@ def check_tests(project_dir: Path) -> CheckResult:
             stdout=result.stdout,
             stderr=result.stderr,
         )
+    findings = _parse_test_findings(output)
     return CheckResult(
         name="tests",
         passed=False,
@@ -80,4 +107,8 @@ def check_tests(project_dir: Path) -> CheckResult:
         command=("uv", *args),
         stdout=result.stdout,
         stderr=result.stderr,
+        metadata={
+            "failure_count": len(findings),
+            "findings": findings,
+        },
     )

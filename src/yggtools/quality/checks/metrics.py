@@ -649,13 +649,15 @@ def check_metrics(project_dir: Path) -> CheckResult:
         )
 
     first = analysis.violations[0]
-    metadata["violations"] = [
+    findings = [
         {
             "path": _relative_to(violation.path, project_dir),
             "message": violation.message,
         }
         for violation in analysis.violations
     ]
+    metadata["violations"] = findings
+    metadata["findings"] = findings
     return CheckResult(
         name="metrics",
         passed=False,

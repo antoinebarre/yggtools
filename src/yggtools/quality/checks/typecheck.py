@@ -2,10 +2,39 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from yggtools.quality.runner import CheckResult, register
 from yggtools.uv import run_uv
+
+
+def _parse_mypy_findings(output: str) -> list[dict[str, object]]:
+    """Extract structured findings from mypy output.
+
+    Parses lines matching ``path:line: error: message``.
+
+    Args:
+        output: Combined stdout and stderr from mypy.
+
+    Returns:
+        List of finding dicts with ``path``, ``line``, and ``message``.
+    """
+    pattern = re.compile(
+        r"^(?P<path>[^:]+):(?P<line>\d+):\s*error:\s*(?P<message>.+)$",
+    )
+    findings: list[dict[str, object]] = []
+    for line in output.splitlines():
+        match = pattern.match(line.strip())
+        if match:
+            findings.append(
+                {
+                    "path": match.group("path"),
+                    "line": int(match.group("line")),
+                    "message": match.group("message"),
+                }
+            )
+    return findings
 
 
 @register("typecheck")
@@ -37,8 +66,8 @@ def check_typecheck(project_dir: Path) -> CheckResult:
             stdout=result.stdout,
             stderr=result.stderr,
         )
-    lines = [ln for ln in output.splitlines() if ": error:" in ln]
-    count = len(lines)
+    findings = _parse_mypy_findings(output)
+    count = len(findings)
     return CheckResult(
         name="typecheck",
         passed=False,
@@ -46,5 +75,8 @@ def check_typecheck(project_dir: Path) -> CheckResult:
         command=("uv", *args),
         stdout=result.stdout,
         stderr=result.stderr,
-        metadata={"error_count": count},
+        metadata={
+            "error_count": count,
+            "findings": findings,
+        },
     )

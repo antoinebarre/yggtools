@@ -2,10 +2,33 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from yggtools.quality.runner import CheckResult, register
 from yggtools.uv import run_uv
+
+
+def _parse_findings(output: str) -> list[dict[str, object]]:
+    """Extract structured findings from ruff format output.
+
+    Args:
+        output: Combined stdout and stderr from ruff format.
+
+    Returns:
+        List of finding dicts with ``path`` and ``message`` keys.
+    """
+    findings: list[dict[str, object]] = []
+    for line in output.splitlines():
+        match = re.match(r"Would reformat:\s*(.+)", line)
+        if match:
+            findings.append(
+                {
+                    "path": match.group(1).strip(),
+                    "message": "file would be reformatted",
+                }
+            )
+    return findings
 
 
 @register("format")
@@ -35,8 +58,9 @@ def check_format(project_dir: Path) -> CheckResult:
             stdout=result.stdout,
             stderr=result.stderr,
         )
-    lines = (result.stdout + result.stderr).splitlines()
-    count = sum(1 for ln in lines if "would reformat" in ln)
+    output = result.stdout + result.stderr
+    findings = _parse_findings(output)
+    count = len(findings)
     return CheckResult(
         name="format",
         passed=False,
@@ -44,5 +68,8 @@ def check_format(project_dir: Path) -> CheckResult:
         command=("uv", *args),
         stdout=result.stdout,
         stderr=result.stderr,
-        metadata={"files_to_reformat": count},
+        metadata={
+            "files_to_reformat": count,
+            "findings": findings,
+        },
     )
