@@ -414,12 +414,12 @@ def _print_artifact_table(
     for artifact_path, digest in report.check_reports.values():
         table.add_row(
             _relative_to_project(artifact_path, project_dir),
-            digest[:16] + "…",
+            digest,
         )
     if report.summary_path:
         table.add_row(
             _relative_to_project(report.summary_path, project_dir),
-            report.summary_digest[:16] + "…",
+            report.summary_digest,
         )
 
     reports_dir = (

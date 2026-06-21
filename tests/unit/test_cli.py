@@ -7,11 +7,13 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
 
+from rich.console import Console
 from typer.testing import CliRunner
 
 from yggtools.cli import (
     _collect_objective_rows,
     _is_int,
+    _print_artifact_table,
     _print_objectives_table,
     _print_run_summary,
     _read_python_version,
@@ -19,7 +21,7 @@ from yggtools.cli import (
     _run_with_progress,
     app,
 )
-from yggtools.quality.pipeline import PipelineResult
+from yggtools.quality.pipeline import PipelineReport, PipelineResult
 from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
 from yggtools.repo_init.pipeline import (
     STEPS_INIT,
@@ -116,6 +118,31 @@ class TestPipelineCommand:
         reports = tmp_path / "work" / "reports"
         assert (reports / "format.json").exists()
         assert (reports / "pipeline.json").exists()
+
+    def test_artifact_table_prints_full_checksums(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: artifact table must show full SHA-256 digests."""
+        check_digest = "a" * 64
+        summary_digest = "b" * 64
+        report = PipelineReport(
+            check_reports={
+                "format": (
+                    tmp_path / "work" / "reports" / "format.json",
+                    check_digest,
+                ),
+            },
+            summary_path=tmp_path / "work" / "reports" / "pipeline.json",
+            summary_digest=summary_digest,
+        )
+        console = Console(record=True, width=160)
+        with patch("yggtools.cli._console", console):
+            _print_artifact_table(report, tmp_path)
+        printed = console.export_text()
+        assert check_digest in printed
+        assert summary_digest in printed
+        assert "…" not in printed
 
     def test_custom_report_dir(self, tmp_path: Path) -> None:
         """Requirement: --report-dir overrides artifact location."""
