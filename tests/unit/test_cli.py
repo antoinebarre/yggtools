@@ -10,19 +10,20 @@ from unittest.mock import patch
 from rich.console import Console
 from typer.testing import CliRunner
 
-from yggtools.cli import (
-    _collect_objective_rows,
-    _is_int,
-    _print_artifact_table,
-    _print_objectives_table,
-    _print_run_summary,
-    _read_python_version,
-    _reset_steps,
-    _run_with_progress,
-    app,
+from yggtools.cli import app
+from yggtools.quality.display import (
+    print_artifact_table,
+    print_objectives_table,
+    print_run_summary,
 )
+from yggtools.quality.objectives import collect_objective_rows, is_int
 from yggtools.quality.pipeline import PipelineReport, PipelineResult
 from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
+from yggtools.repo_init.commands import (
+    read_python_version,
+    reset_steps,
+    run_with_progress,
+)
 from yggtools.repo_init.pipeline import (
     STEPS_INIT,
     STEPS_RESET_AI,
@@ -137,12 +138,12 @@ class TestPipelineCommand:
             summary_digest=summary_digest,
         )
         console = Console(record=True, width=160)
-        with patch("yggtools.cli._console", console):
-            _print_artifact_table(report, tmp_path)
+        with patch("yggtools.quality.display._console", console):
+            print_artifact_table(report, tmp_path)
         printed = console.export_text()
         assert check_digest in printed
         assert summary_digest in printed
-        assert "…" not in printed
+        assert "..." not in printed
 
     def test_custom_report_dir(self, tmp_path: Path) -> None:
         """Requirement: --report-dir overrides artifact location."""
@@ -280,7 +281,7 @@ class TestObjectives:
             "ruff": _dummy_result("ruff"),
             "flake8": _dummy_result("flake8"),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         labels = [r[0] for r in rows]
         assert "Formatting" in labels
         assert "Ruff errors" in labels
@@ -296,7 +297,7 @@ class TestObjectives:
                 metadata={"error_count": 3},
             ),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         assert any(r[0] == "Type errors" and r[1] == "3" for r in rows)
 
     def test_metrics_objectives(self) -> None:
@@ -317,7 +318,7 @@ class TestObjectives:
                 },
             ),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         labels = [r[0] for r in rows]
         assert "Max cyclomatic complexity" in labels
         assert "Metrics violations" in labels
@@ -340,7 +341,7 @@ class TestObjectives:
                 },
             ),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         cc_row = next(r for r in rows if r[0] == "Max cyclomatic complexity")
         assert cc_row[3] is True
 
@@ -350,7 +351,7 @@ class TestObjectives:
             "security-code": _dummy_result("security-code"),
             "security-deps": _dummy_result("security-deps"),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         labels = [r[0] for r in rows]
         assert "Security issues" in labels
         assert "Dependency vulns" in labels
@@ -364,7 +365,7 @@ class TestObjectives:
                 detail="10 passed · coverage 100.00%",
             ),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         labels = [r[0] for r in rows]
         assert "Test coverage" in labels
         assert "Test suite" in labels
@@ -380,14 +381,14 @@ class TestObjectives:
                 detail="10 passed",
             ),
         }
-        rows = _collect_objective_rows(results)
+        rows = collect_objective_rows(results)
         labels = [r[0] for r in rows]
         assert "Test coverage" not in labels
         assert "Test suite" in labels
 
     def test_empty_results(self) -> None:
         """Requirement: empty results produce no rows."""
-        assert _collect_objective_rows({}) == []
+        assert collect_objective_rows({}) == []
 
     def test_print_objectives_skips_when_no_rows(self) -> None:
         """Requirement: objectives table is skipped when empty."""
@@ -396,19 +397,19 @@ class TestObjectives:
             duration_seconds=0.0,
             passed=True,
         )
-        with patch("yggtools.cli._console") as console:
-            _print_objectives_table(empty)
+        with patch("yggtools.quality.display._console") as console:
+            print_objectives_table(empty)
         console.print.assert_not_called()
 
     def test_is_int_valid(self) -> None:
         """Requirement: _is_int returns True for ints."""
-        assert _is_int(1, 2, 3)
-        assert _is_int("5", "10")
+        assert is_int(1, 2, 3)
+        assert is_int("5", "10")
 
     def test_is_int_invalid(self) -> None:
         """Requirement: _is_int returns False for non-ints."""
-        assert not _is_int("?", 5)
-        assert not _is_int(None)
+        assert not is_int("?", 5)
+        assert not is_int(None)
 
 
 class TestInitRepo:
@@ -429,7 +430,7 @@ class TestInitRepo:
     def test_exits_1_when_uv_not_found(self) -> None:
         """Requirement: init-repo must exit 1 when uv is absent."""
         with patch(
-            "yggtools.cli.check_uv_available",
+            "yggtools.repo_init.commands.check_uv_available",
             side_effect=UvNotFoundError("no uv"),
         ):
             result = _runner.invoke(
@@ -441,9 +442,9 @@ class TestInitRepo:
     def test_exits_1_on_step_error(self) -> None:
         """Requirement: init-repo must exit 1 on step failure."""
         with (
-            patch("yggtools.cli.check_uv_available"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=StepError("step failed"),
             ),
         ):
@@ -456,8 +457,8 @@ class TestInitRepo:
     def test_exits_0_on_success(self) -> None:
         """Requirement: init-repo must exit 0 on success."""
         with (
-            patch("yggtools.cli.check_uv_available"),
-            patch("yggtools.cli._run_with_progress"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
+            patch("yggtools.repo_init.commands.run_with_progress"),
         ):
             result = _runner.invoke(
                 app,
@@ -477,9 +478,9 @@ class TestInitRepo:
     def test_exits_1_on_unexpected_exception(self) -> None:
         """Requirement: init-repo must exit 1 on unexpected error."""
         with (
-            patch("yggtools.cli.check_uv_available"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -504,7 +505,7 @@ class TestInitRepo:
             name="stub",
             fn=lambda _c: called.append("stub"),
         )
-        _run_with_progress(ctx, steps=[step])
+        run_with_progress(ctx, steps=[step])
         assert called == ["stub"]
 
     def test_no_git_flag_suppresses_ci_in_dry_run(self) -> None:
@@ -525,7 +526,7 @@ class TestInit:
     ) -> None:
         """Requirement: init must exit 1 without pyproject.toml."""
         with patch(
-            "yggtools.cli.Path.cwd",
+            "yggtools.repo_init.commands.Path.cwd",
             return_value=tmp_path,
         ):
             result = _runner.invoke(app, ["init"])
@@ -538,7 +539,7 @@ class TestInit:
             encoding="utf-8",
         )
         with patch(
-            "yggtools.cli.Path.cwd",
+            "yggtools.repo_init.commands.Path.cwd",
             return_value=tmp_path,
         ):
             result = _runner.invoke(app, ["init", "--dry-run"])
@@ -554,7 +555,7 @@ class TestInit:
             encoding="utf-8",
         )
         with patch(
-            "yggtools.cli.Path.cwd",
+            "yggtools.repo_init.commands.Path.cwd",
             return_value=tmp_path,
         ):
             result = _runner.invoke(app, ["init", "--dry-run"])
@@ -571,11 +572,11 @@ class TestInit:
         )
         with (
             patch(
-                "yggtools.cli.Path.cwd",
+                "yggtools.repo_init.commands.Path.cwd",
                 return_value=tmp_path,
             ),
             patch(
-                "yggtools.cli.check_uv_available",
+                "yggtools.repo_init.commands.check_uv_available",
                 side_effect=UvNotFoundError("no uv"),
             ),
         ):
@@ -590,11 +591,11 @@ class TestInit:
         )
         with (
             patch(
-                "yggtools.cli.Path.cwd",
+                "yggtools.repo_init.commands.Path.cwd",
                 return_value=tmp_path,
             ),
-            patch("yggtools.cli.check_uv_available"),
-            patch("yggtools.cli._run_with_progress"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
+            patch("yggtools.repo_init.commands.run_with_progress"),
         ):
             result = _runner.invoke(app, ["init"])
         assert result.exit_code == 0
@@ -610,12 +611,12 @@ class TestInit:
         )
         with (
             patch(
-                "yggtools.cli.Path.cwd",
+                "yggtools.repo_init.commands.Path.cwd",
                 return_value=tmp_path,
             ),
-            patch("yggtools.cli.check_uv_available"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=StepError("step failed"),
             ),
         ):
@@ -633,12 +634,12 @@ class TestInit:
         )
         with (
             patch(
-                "yggtools.cli.Path.cwd",
+                "yggtools.repo_init.commands.Path.cwd",
                 return_value=tmp_path,
             ),
-            patch("yggtools.cli.check_uv_available"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -671,12 +672,12 @@ class TestInit:
 
         with (
             patch(
-                "yggtools.cli.Path.cwd",
+                "yggtools.repo_init.commands.Path.cwd",
                 return_value=tmp_path,
             ),
-            patch("yggtools.cli.check_uv_available"),
+            patch("yggtools.repo_init.commands.check_uv_available"),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=_capture_steps,
             ),
         ):
@@ -692,7 +693,10 @@ class TestReset:
 
     def test_exits_1_when_no_pyproject(self, tmp_path: Path) -> None:
         """Requirement: reset must exit 1 outside a uv project."""
-        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+        with patch(
+            "yggtools.repo_init.commands.Path.cwd",
+            return_value=tmp_path,
+        ):
             result = _runner.invoke(app, ["reset"])
         assert result.exit_code == 1
 
@@ -702,7 +706,10 @@ class TestReset:
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
-        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+        with patch(
+            "yggtools.repo_init.commands.Path.cwd",
+            return_value=tmp_path,
+        ):
             result = _runner.invoke(
                 app, ["reset", "--only", "ai", "--dry-run"]
             )
@@ -716,7 +723,10 @@ class TestReset:
             '[project]\nname = "my-lib"\n',
             encoding="utf-8",
         )
-        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+        with patch(
+            "yggtools.repo_init.commands.Path.cwd",
+            return_value=tmp_path,
+        ):
             result = _runner.invoke(app, ["reset", "--only", "bad"])
         assert result.exit_code == 1
 
@@ -742,9 +752,12 @@ class TestReset:
                 received_steps.extend(steps)
 
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.Path.cwd",
+                return_value=tmp_path,
+            ),
+            patch(
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=_capture_steps,
             ),
         ):
@@ -760,9 +773,12 @@ class TestReset:
             encoding="utf-8",
         )
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.Path.cwd",
+                return_value=tmp_path,
+            ),
+            patch(
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=StepError("step failed"),
             ),
         ):
@@ -776,9 +792,12 @@ class TestReset:
             encoding="utf-8",
         )
         with (
-            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
             patch(
-                "yggtools.cli._run_with_progress",
+                "yggtools.repo_init.commands.Path.cwd",
+                return_value=tmp_path,
+            ),
+            patch(
+                "yggtools.repo_init.commands.run_with_progress",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -787,7 +806,7 @@ class TestReset:
 
     def test_reset_steps_helper_selects_ai_group(self) -> None:
         """Requirement: _reset_steps must select the AI group."""
-        assert _reset_steps("ai") == STEPS_RESET_AI
+        assert reset_steps("ai") == STEPS_RESET_AI
 
     def test_read_python_version_uses_file(self, tmp_path: Path) -> None:
         """Requirement: .python-version configures generated CI."""
@@ -795,14 +814,14 @@ class TestReset:
             "3.13\n",
             encoding="utf-8",
         )
-        assert _read_python_version(tmp_path) == "3.13"
+        assert read_python_version(tmp_path) == "3.13"
 
     def test_read_python_version_defaults_when_missing(
         self,
         tmp_path: Path,
     ) -> None:
         """Requirement: missing .python-version falls back to default."""
-        assert _read_python_version(tmp_path) == "3.12"
+        assert read_python_version(tmp_path) == "3.12"
 
 
 class TestIncreaseVersion:
@@ -811,7 +830,7 @@ class TestIncreaseVersion:
     def test_exits_0_and_prints_update(self, tmp_path: Path) -> None:
         """Requirement: increase-version reports successful bump."""
         with patch(
-            "yggtools.cli.increase_project_version",
+            "yggtools.version_commands.increase_project_version",
             return_value=SimpleNamespace(
                 project_name="my-lib",
                 old_version="1.2.3",
@@ -830,7 +849,7 @@ class TestIncreaseVersion:
     def test_exits_1_on_version_error(self, tmp_path: Path) -> None:
         """Requirement: version errors are shown cleanly."""
         with patch(
-            "yggtools.cli.increase_project_version",
+            "yggtools.version_commands.increase_project_version",
             side_effect=VersionError("bad version"),
         ):
             result = _runner.invoke(
@@ -1081,8 +1100,8 @@ class TestRun:
                 ],
             },
         )
-        with patch("yggtools.cli._console") as console:
-            _print_run_summary(
+        with patch("yggtools.quality.display._console") as console:
+            print_run_summary(
                 [result],
                 tmp_path,
                 {
@@ -1124,14 +1143,14 @@ class TestRun:
                 ],
             },
         )
-        with patch("yggtools.cli._console") as console:
-            _print_run_summary([result], tmp_path, {})
+        with patch("yggtools.quality.display._console") as console:
+            print_run_summary([result], tmp_path, {})
         printed = "\n".join(
             str(call.args[0])
             for call in console.print.call_args_list
             if call.args
         )
-        assert "…" in printed
+        assert "..." in printed
 
     def test_print_run_summary_includes_failure_context(
         self,
@@ -1144,8 +1163,8 @@ class TestRun:
             detail="bad",
             stderr="first\nsecond",
         )
-        with patch("yggtools.cli._console") as console:
-            _print_run_summary(
+        with patch("yggtools.quality.display._console") as console:
+            print_run_summary(
                 [result],
                 tmp_path,
                 {
@@ -1177,8 +1196,8 @@ class TestRun:
                 "top_complex_functions": ["plain"],
             },
         )
-        with patch("yggtools.cli._console") as console:
-            _print_run_summary([result], tmp_path, {})
+        with patch("yggtools.quality.display._console") as console:
+            print_run_summary([result], tmp_path, {})
         printed = "\n".join(
             str(call.args[0])
             for call in console.print.call_args_list

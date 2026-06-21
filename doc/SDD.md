@@ -58,11 +58,17 @@
 ```
 src/yggtools/
 ├── __init__.py
-├── cli.py                    # Typer app: init, pipeline, run, version
+├── cli.py                    # Thin Typer composition entry point
+├── cli_support.py            # Shared CLI path and text helpers
 ├── uv.py                     # Adapter: uv and git subprocess calls
+├── version_commands.py       # Typer commands: version, increase-version
+├── version_display.py        # Rich rendering for version commands
 ├── versioning.py             # SemVer bumping across package artifacts
 ├── quality/
 │   ├── __init__.py
+│   ├── commands.py           # Typer commands: pipeline, run
+│   ├── display.py            # Rich rendering for quality command output
+│   ├── objectives.py         # Quality objective row calculation
 │   ├── pipeline.py           # Staged orchestration + JSON artifacts
 │   ├── runner.py             # Registry, CheckFn protocol, run_all / run_one
 │   ├── report.py             # Legacy Markdown report helper
@@ -77,6 +83,8 @@ src/yggtools/
 │       └── version.py        # @register("version-consistency")
 └── repo_init/
     ├── __init__.py
+    ├── commands.py           # Typer commands: init-repo, init, reset
+    ├── display.py            # Dry-run and progress rendering
     ├── pipeline.py           # STEPS list + run_pipeline()
     ├── steps.py              # RepoContext, StepError, one function per step
     └── templates/            # Jinja2 templates (package resource)
@@ -308,49 +316,36 @@ both with `check=True`.
 
 ---
 
-## 6. CLI: `cli.py`
+## 6. CLI composition and command modules
 
 ```python
 app = typer.Typer(name="yggtools")
 
-@app.command("init-repo")
-def init_repo(
-    project_name: str | None = None,
-    python: str = "3.12",
-    no_git: bool = False,
-    dry_run: bool = False,
-    parent_dir: Path | None = None,
-) -> None: ...
-
-@app.command("run")
-def run(
-    check_name: str | None = None,
-    all_checks: bool = False,
-    ci: bool = False,
-    path: Path | None = None,
-) -> None: ...
-
-@app.command("pipeline")
-def pipeline_cmd(path: str | None = None, report_dir: str | None = None) -> None: ...
-
-@app.command("version")
-def version_cmd(path: str | None = None) -> None: ...
-
-@app.command("increase-version")
-def increase_version_cmd(level: int, path: str | None = None) -> None: ...
+register_quality_commands(app)
+register_repo_init_commands(app)
+register_version_commands(app)
 ```
 
-All check modules are imported at module level in `cli.py` to populate the
-registry before any command is dispatched.
+`cli.py` owns only the package entry point and command composition. Business
+commands live beside their owning domain:
+
+| Module | Commands | Responsibility |
+| --- | --- | --- |
+| `quality.commands` | `pipeline`, `run` | Quality check orchestration and JSON artifact writing |
+| `repo_init.commands` | `init-repo`, `init`, `reset` | Repository scaffold and generated-file reset workflows |
+| `version_commands` | `version`, `increase-version` | Version inspection and SemVer bump entry points |
+
+All check modules are imported at module level in `quality.commands` to
+populate the registry before any quality command is dispatched.
 
 ### `init-repo` flow
 
 ```
 init_repo()
   ├── build RepoContext
-  ├── if dry_run → _print_dry_run_plan(ctx) and return
+  ├── if dry_run → display.print_dry_run_plan(ctx) and return
   ├── check_uv_available()        → exit 1 on UvNotFoundError
-  ├── _run_with_progress(ctx)     → exit 1 on StepError or Exception
+  ├── run_with_progress(ctx)      → exit 1 on StepError or Exception
   └── print success message
 ```
 
@@ -360,13 +355,10 @@ init_repo()
 run()
   ├── if not (check_name or all_checks) → exit 1 with usage error
   ├── resolve project_dir (path or cwd)
-  ├── if all_checks:
-  │     results = run_all(project_dir)
-  │     # --ci is accepted for compatibility; artifacts are always JSON
-  │     exit 0 if all passed else 1
-  └── else:
-        result = run_one(check_name, project_dir)
-        exit 0 if passed else 1
+  ├── run one check or all registered checks
+  ├── write one JSON artifact per result
+  ├── print compact summary
+  └── exit 0 if all passed else 1
 ```
 
 ---
