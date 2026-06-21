@@ -61,7 +61,7 @@ def _add_dashboard_row(table: Table, result: CheckResult) -> None:
         table: Rich table to mutate.
         result: Check result to display.
     """
-    status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+    status = result_status_label(result)
     duration = (
         f"{result.duration_seconds:.2f}s"
         if result.duration_seconds is not None
@@ -153,6 +153,26 @@ def print_failure_details(result: PipelineResult) -> None:
                 _console.print(f"    {line}")
 
 
+def print_warning_details(result: PipelineResult) -> None:
+    """Print non-blocking warning findings from quality audits.
+
+    Args:
+        result: Pipeline execution result.
+    """
+    warning_results = [
+        item for item in result.results if is_warning_result(item)
+    ]
+    if not warning_results:
+        return
+
+    _console.print()
+    _console.print("[bold yellow]Warnings[/bold yellow]")
+    for check_result in warning_results:
+        _console.print(f"\n  [bold]{check_result.name}[/bold]")
+        for line in warning_finding_lines(check_result):
+            _console.print(f"    {line}")
+
+
 def print_run_summary(
     results: list[CheckResult],
     project_dir: Path,
@@ -186,7 +206,7 @@ def result_summary_line(result: CheckResult) -> str:
     Returns:
         Formatted summary string with Rich markup.
     """
-    status = "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+    status = result_status_label(result)
     duration = (
         f"{result.duration_seconds:.2f}s"
         if result.duration_seconds is not None
@@ -195,6 +215,49 @@ def result_summary_line(result: CheckResult) -> str:
     return (
         f"- {status} [bold]{result.name}[/bold] ({duration}) - {result.detail}"
     )
+
+
+def result_icon(result: CheckResult) -> str:
+    """Return the progress icon for a check result.
+
+    Args:
+        result: Single check result.
+
+    Returns:
+        Rich markup for pass, warning, or fail status.
+    """
+    if is_warning_result(result):
+        return "[yellow]![/yellow]"
+    return "[green]✓[/green]" if result.passed else "[red]✗[/red]"
+
+
+def result_status_label(result: CheckResult) -> str:
+    """Return the table status label for a check result.
+
+    Args:
+        result: Single check result.
+
+    Returns:
+        Rich markup for pass, warning, or fail status.
+    """
+    if is_warning_result(result):
+        return "[yellow]WARN[/yellow]"
+    return "[green]PASS[/green]" if result.passed else "[red]FAIL[/red]"
+
+
+def is_warning_result(result: CheckResult) -> bool:
+    """Return True when a passing check carries warning findings.
+
+    Args:
+        result: Single check result.
+
+    Returns:
+        True for non-blocking warning results with at least one warning.
+    """
+    if not result.passed or result.metadata.get("severity") != "warning":
+        return False
+    count = result.metadata.get("warning_count", 0)
+    return isinstance(count, int) and count > 0
 
 
 def print_run_failure_context(result: CheckResult) -> None:
@@ -224,6 +287,42 @@ def print_result_context(result: CheckResult) -> None:
     top = result.metadata.get("top_complex_functions")
     if isinstance(top, list) and top:
         _console.print(f"  top: {format_top_item(top[0])}")
+    if is_warning_result(result):
+        for line in warning_finding_lines(result):
+            _console.print(f"  warning: {line}")
+
+
+def warning_finding_lines(result: CheckResult) -> list[str]:
+    """Format warning findings for console display.
+
+    Args:
+        result: Warning check result.
+
+    Returns:
+        Human-readable finding lines.
+    """
+    findings = result.metadata.get("findings")
+    if not isinstance(findings, list):
+        return []
+    return [_format_warning_finding(finding) for finding in findings]
+
+
+def _format_warning_finding(finding: object) -> str:
+    """Format one warning finding for console display.
+
+    Args:
+        finding: Warning finding metadata.
+
+    Returns:
+        Human-readable finding line.
+    """
+    if not isinstance(finding, dict):
+        return str(finding)
+    path = finding.get("path", "?")
+    line = finding.get("line", "?")
+    marker = finding.get("marker", "warning")
+    text = finding.get("text", "")
+    return f"{path}:{line} {marker} {text}"
 
 
 def format_summary(summary: dict[object, object]) -> str:

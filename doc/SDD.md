@@ -126,8 +126,8 @@ stores the function under `name` and returns it unchanged.
 `_REGISTRY.values()` in insertion order.
 
 The registry is populated at import time when the check modules are imported.
-`cli.py` imports all check modules at top level so the registry is fully
-populated before any command runs.
+`quality.commands` imports all check modules at top level so the registry is
+fully populated before any quality command runs.
 
 ### 3.2 `quality/checks/`
 
@@ -155,6 +155,8 @@ Every check:
 | `version.py` | `version-consistency` | Version artifact consistency |
 | `typecheck.py` | `typecheck` | `mypy src tests` |
 | `metrics.py` | `metrics` | Pure Python AST analysis |
+| `warnings.py` | `lint-suppressions` | Pure Python lint suppression scan |
+| `warnings.py` | `todos` | Pure Python package TODO scan |
 | `security.py` | `security-code` | `bandit -r src` |
 | `security.py` | `security-deps` | `pip-audit` on `uv export --no-dev` |
 | `tests.py` | `tests` | `pytest` |
@@ -185,7 +187,22 @@ Configuration defaults (read from `[tool.yggtools.code_metrics]`):
 | `max_cyclomatic_complexity` | `10` |
 | `max_module_logical_lines` | `900` |
 
-### 3.4 `quality/pipeline.py`
+### 3.4 `quality/checks/warnings.py`
+
+`warnings.py` does not call external tools. It scans `src/yggtools/**/*.py`
+and returns passing `CheckResult` objects with warning metadata:
+
+- `lint-suppressions` lists suppression markers such as `noqa`,
+  `type: ignore`, `pragma: no cover`, `nosec`, `pylint: disable`,
+  `ruff: noqa`, and formatter-off markers.
+- `todos` lists package comments starting with `TODO`, `FIXME`, or `XXX`.
+
+These checks are non-blocking: `passed=True`, `metadata.severity="warning"`,
+and `metadata.warning_count` carries the finding count. The CLI renders these
+results as `WARN` when the count is non-zero, and the JSON check artifact uses
+`status="warning"` while preserving `passed=true`.
+
+### 3.5 `quality/pipeline.py`
 
 ```python
 @dataclass(frozen=True)
@@ -200,7 +217,7 @@ def write_pipeline_artifacts(result, project_dir, output_dir) -> PipelineReport:
 The pipeline runs staged checks in deterministic order and writes one JSON
 artifact per check plus `pipeline.json`, each with a `.sha256` sidecar.
 
-### 3.5 `quality/report.py`
+### 3.6 `quality/report.py`
 
 ```python
 def write_report(

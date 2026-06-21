@@ -14,7 +14,12 @@ from yggtools.cli import app
 from yggtools.quality.display import (
     print_artifact_table,
     print_objectives_table,
+    print_result_context,
     print_run_summary,
+    print_warning_details,
+    result_icon,
+    result_status_label,
+    warning_finding_lines,
 )
 from yggtools.quality.objectives import collect_objective_rows, is_int
 from yggtools.quality.pipeline import PipelineReport, PipelineResult
@@ -1204,6 +1209,105 @@ class TestRun:
             if call.args
         )
         assert "plain" in printed
+
+    def test_warning_result_renders_warn_status(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: warning checks must render as non-blocking WARN."""
+        result = CheckResult(
+            name="todos",
+            passed=True,
+            detail="1 todo(s)",
+            metadata={
+                "severity": "warning",
+                "warning_count": 1,
+                "findings": [
+                    {
+                        "path": "src/yggtools/a.py",
+                        "line": 4,
+                        "marker": "todo",
+                        "text": "# TODO: later",
+                    },
+                ],
+            },
+        )
+        with patch("yggtools.quality.display._console") as console:
+            print_run_summary([result], tmp_path, {})
+        printed = "\n".join(
+            str(call.args[0])
+            for call in console.print.call_args_list
+            if call.args
+        )
+        assert "WARN" in printed
+        assert "src/yggtools/a.py:4 todo # TODO: later" in printed
+        assert result_icon(result) == "[yellow]![/yellow]"
+        assert result_status_label(result) == "[yellow]WARN[/yellow]"
+
+    def test_print_warning_details_lists_findings(self) -> None:
+        """Requirement: pipeline output must list warning findings."""
+        result = CheckResult(
+            name="lint-suppressions",
+            passed=True,
+            detail="1 suppression(s)",
+            metadata={
+                "severity": "warning",
+                "warning_count": 1,
+                "findings": [
+                    {
+                        "path": "src/yggtools/a.py",
+                        "line": 3,
+                        "marker": "noqa",
+                        "text": "value = 1  # noqa",
+                    },
+                ],
+            },
+        )
+        report = PipelineResult(
+            results=(result,),
+            duration_seconds=0.0,
+            passed=True,
+        )
+        with patch("yggtools.quality.display._console") as console:
+            print_warning_details(report)
+        printed = "\n".join(
+            str(call.args[0])
+            for call in console.print.call_args_list
+            if call.args
+        )
+        assert "Warnings" in printed
+        assert "src/yggtools/a.py:3 noqa value = 1  # noqa" in printed
+
+    def test_warning_helpers_handle_plain_metadata(self) -> None:
+        """Requirement: warning formatting must tolerate plain values."""
+        result = CheckResult(
+            name="todos",
+            passed=True,
+            detail="1 todo(s)",
+            metadata={
+                "severity": "warning",
+                "warning_count": 1,
+                "findings": ["plain"],
+            },
+        )
+        assert warning_finding_lines(result) == ["plain"]
+        with patch("yggtools.quality.display._console") as console:
+            print_result_context(result)
+        console.print.assert_called_with("  warning: plain")
+
+    def test_warning_helpers_skip_invalid_finding_list(self) -> None:
+        """Requirement: invalid warning finding metadata must be ignored."""
+        result = CheckResult(
+            name="todos",
+            passed=True,
+            detail="1 todo(s)",
+            metadata={
+                "severity": "warning",
+                "warning_count": 1,
+                "findings": "plain",
+            },
+        )
+        assert warning_finding_lines(result) == []
 
 
 def _write_version_project(tmp_path: Path, *, version: str) -> None:

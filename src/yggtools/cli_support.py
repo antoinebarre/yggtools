@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# TODO(@antoinebarre): export to yggtools.
+# https://github.com/antoinebarre/yggtools/issues/12
+
 
 def relative_to_project(path: Path, project_dir: Path) -> str:
     """Return a display path relative to the project when possible.

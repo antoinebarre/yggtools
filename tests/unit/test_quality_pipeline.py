@@ -12,6 +12,7 @@ from yggtools.quality.pipeline import (
     _check_payload,
     _json_safe,
     _relative,
+    _result_status,
     _write_json,
     run_pipeline,
     write_pipeline_artifacts,
@@ -263,6 +264,35 @@ class TestCheckPayload:
         payload = _check_payload(result, tmp_path)
         assert payload["stdout"] == "out"
         assert payload["stderr"] == "err"
+
+    def test_warning_payload_uses_warning_status(self, tmp_path: Path) -> None:
+        """Requirement: non-blocking warnings must publish warning JSON."""
+        result = CheckResult(
+            name="todos",
+            passed=True,
+            detail="1 todo(s)",
+            metadata={
+                "severity": "warning",
+                "warning_count": 1,
+                "findings": [{"path": "src/a.py", "line": 1}],
+            },
+        )
+        payload = _check_payload(result, tmp_path)
+        assert payload["status"] == "warning"
+        assert payload["passed"] is True
+
+    def test_zero_warning_payload_uses_pass_status(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: empty warning checks remain plain passes."""
+        result = CheckResult(
+            name="todos",
+            passed=True,
+            detail="0 todo(s)",
+            metadata={"severity": "warning", "warning_count": 0},
+        )
+        assert _result_status(result) == "pass"
 
 
 class TestHelpers:

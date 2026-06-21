@@ -18,6 +18,7 @@ from yggtools.quality.checks import security as security_checks
 from yggtools.quality.checks import tests as tests_checks
 from yggtools.quality.checks import typecheck as typecheck_checks
 from yggtools.quality.checks import version as version_checks
+from yggtools.quality.checks import warnings as warning_checks
 from yggtools.quality.pipeline import (
     STAGES,
     PipelineResult,
@@ -37,6 +38,7 @@ _REGISTERED_CHECK_MODULES = (
     tests_checks,
     typecheck_checks,
     version_checks,
+    warning_checks,
 )
 
 
@@ -83,6 +85,7 @@ def pipeline_cmd(
     display.print_pipeline_dashboard(result, project_dir)
     display.print_objectives_table(result)
     display.print_artifact_table(report, project_dir)
+    display.print_warning_details(result)
     display.print_failure_details(result)
 
     _console.print()
@@ -111,7 +114,7 @@ def run_pipeline_with_progress(project_dir: Path) -> PipelineResult:
             if check_name in registered_checks():
                 result = run_one(check_name, project_dir)
                 results.append(result)
-                icon = "[green]✓[/green]" if result.passed else "[red]✗[/red]"
+                icon = display.result_icon(result)
                 _console.print(f"    {icon} {result.name}")
     elapsed = perf_counter() - started
     passed = all(item.passed for item in results)
