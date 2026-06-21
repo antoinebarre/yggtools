@@ -33,6 +33,17 @@ from yggtools.quality.checks.typecheck import (
     _parse_mypy_findings,
     check_typecheck,
 )
+from yggtools.quality.checks.version import (
+    _collect_version_artifacts,
+    _package_dir,
+    _read_init_version,
+    _read_lock_version,
+    _read_pyproject_identity,
+    check_version_consistency,
+)
+from yggtools.quality.checks.version import (
+    _relative_to as _relative_version_path,
+)
 from yggtools.quality.runner import CheckResult
 from yggtools.uv import RunResult
 
@@ -215,6 +226,217 @@ class TestCheckFlake8:
         findings = result.metadata["findings"]
         assert isinstance(findings, list)
         assert len(findings) == 2
+
+
+# ── version consistency ─────────────────────────────────────────────────
+
+
+class TestVersionConsistency:
+    """Tests for package version consistency checks."""
+
+    def test_reads_pyproject_identity(self, tmp_path: Path) -> None:
+        """Requirement: pyproject name and version must be extracted."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\nname = "my-lib"\nversion = "1.2.3"\n',
+            encoding="utf-8",
+        )
+        assert _read_pyproject_identity(pyproject) == ("my-lib", "1.2.3")
+
+    def test_missing_pyproject_has_no_identity(self, tmp_path: Path) -> None:
+        """Requirement: missing pyproject yields no name or version."""
+        assert _read_pyproject_identity(tmp_path / "pyproject.toml") == (
+            "",
+            None,
+        )
+
+    def test_invalid_project_section_has_no_identity(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: non-table project section is ignored."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('project = "bad"\n', encoding="utf-8")
+        assert _read_pyproject_identity(pyproject) == ("", None)
+
+    def test_non_string_pyproject_values_are_ignored(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: non-string project identity fields are ignored."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            "[project]\nname = 1\nversion = 2\n",
+            encoding="utf-8",
+        )
+        assert _read_pyproject_identity(pyproject) == ("", None)
+
+    def test_reads_init_version(self, tmp_path: Path) -> None:
+        """Requirement: __version__ must be extracted from __init__.py."""
+        init_file = tmp_path / "__init__.py"
+        init_file.write_text('__version__ = "1.2.3"\n', encoding="utf-8")
+        assert _read_init_version(init_file) == "1.2.3"
+
+    def test_missing_init_version_returns_none(self, tmp_path: Path) -> None:
+        """Requirement: absent __init__.py has no version."""
+        assert _read_init_version(tmp_path / "__init__.py") is None
+
+    def test_init_without_version_returns_none(self, tmp_path: Path) -> None:
+        """Requirement: __init__.py without __version__ has no version."""
+        init_file = tmp_path / "__init__.py"
+        init_file.write_text('NAME = "my-lib"\n', encoding="utf-8")
+        assert _read_init_version(init_file) is None
+
+    def test_reads_editable_lock_version(self, tmp_path: Path) -> None:
+        """Requirement: uv.lock editable package version is extracted."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text(
+            '[[package]]\nname = "my-lib"\nversion = "1.2.3"\n'
+            'source = { editable = "." }\n',
+            encoding="utf-8",
+        )
+        assert _read_lock_version(lock_file, "my-lib") == "1.2.3"
+
+    def test_missing_lock_version_returns_none(self, tmp_path: Path) -> None:
+        """Requirement: missing uv.lock has no version."""
+        assert _read_lock_version(tmp_path / "uv.lock", "my-lib") is None
+
+    def test_empty_project_name_has_no_lock_version(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: lock lookup needs a project name."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text("", encoding="utf-8")
+        assert _read_lock_version(lock_file, "") is None
+
+    def test_non_list_lock_packages_are_ignored(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: malformed lock package section is ignored."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text('package = "bad"\n', encoding="utf-8")
+        assert _read_lock_version(lock_file, "my-lib") is None
+
+    def test_non_table_lock_package_is_ignored(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: malformed package entries are ignored."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text('package = ["bad"]\n', encoding="utf-8")
+        assert _read_lock_version(lock_file, "my-lib") is None
+
+    def test_lock_package_name_mismatch_returns_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: lock lookup ignores other packages."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text(
+            '[[package]]\nname = "other"\nversion = "1.2.3"\n',
+            encoding="utf-8",
+        )
+        assert _read_lock_version(lock_file, "my-lib") is None
+
+    def test_lock_package_without_editable_source_returns_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: only editable local package version is used."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text(
+            '[[package]]\nname = "my-lib"\nversion = "1.2.3"\n',
+            encoding="utf-8",
+        )
+        assert _read_lock_version(lock_file, "my-lib") is None
+
+    def test_non_string_lock_version_returns_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: non-string lock version is ignored."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text(
+            '[[package]]\nname = "my-lib"\nversion = 1\n'
+            'source = { editable = "." }\n',
+            encoding="utf-8",
+        )
+        assert _read_lock_version(lock_file, "my-lib") is None
+
+    def test_package_dir_normalizes_hyphen(self) -> None:
+        """Requirement: distribution names map to import package dirs."""
+        assert _package_dir("my-lib") == "my_lib"
+
+    def test_relative_to_falls_back_to_absolute(self, tmp_path: Path) -> None:
+        """Requirement: display path outside project falls back as-is."""
+        external = Path("/outside/file.txt")
+        assert _relative_version_path(tmp_path, external) == str(external)
+
+    def test_collects_known_artifacts(self, tmp_path: Path) -> None:
+        """Requirement: all known version artifacts must be collected."""
+        _write_version_project(tmp_path, version="1.2.3")
+        artifacts = _collect_version_artifacts(tmp_path)
+        assert [artifact.name for artifact in artifacts] == [
+            "pyproject.project.version",
+            "package.__version__",
+            "uv.lock.package.version",
+        ]
+
+    def test_passes_when_versions_match(self, tmp_path: Path) -> None:
+        """Requirement: check passes when all versions are equal."""
+        _write_version_project(tmp_path, version="1.2.3")
+        result = check_version_consistency(tmp_path)
+        assert result.passed
+        assert "1.2.3" in result.detail
+
+    def test_fails_when_versions_differ(self, tmp_path: Path) -> None:
+        """Requirement: check fails on conflicting artifact versions."""
+        _write_version_project(tmp_path, version="1.2.3")
+        (tmp_path / "src" / "my_lib" / "__init__.py").write_text(
+            '__version__ = "1.2.4"\n',
+            encoding="utf-8",
+        )
+        result = check_version_consistency(tmp_path)
+        assert not result.passed
+        assert result.metadata["versions"] == ["1.2.3", "1.2.4"]
+
+    def test_fails_when_required_artifact_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: check fails when a required version is missing."""
+        _write_version_project(tmp_path, version="1.2.3")
+        (tmp_path / "uv.lock").unlink()
+        result = check_version_consistency(tmp_path)
+        assert not result.passed
+        missing = result.metadata["missing"]
+        assert isinstance(missing, list)
+        assert "uv.lock.package.version" in missing
+
+
+def _write_version_project(tmp_path: Path, *, version: str) -> None:
+    """Write a minimal project with synchronized version artifacts.
+
+    Args:
+        tmp_path: Temporary project root.
+        version: Version string to write.
+    """
+    (tmp_path / "src" / "my_lib").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "my-lib"\nversion = "{version}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "my_lib" / "__init__.py").write_text(
+        f'__version__ = "{version}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text(
+        f'[[package]]\nname = "my-lib"\nversion = "{version}"\n'
+        'source = { editable = "." }\n',
+        encoding="utf-8",
+    )
 
 
 # ── typecheck ────────────────────────────────────────────────────────────

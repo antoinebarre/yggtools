@@ -12,12 +12,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-import yggtools.quality.checks.format
-import yggtools.quality.checks.lint
-import yggtools.quality.checks.metrics
-import yggtools.quality.checks.security
-import yggtools.quality.checks.tests
-import yggtools.quality.checks.typecheck  # noqa: F401
+from yggtools.quality.checks import format as format_checks
+from yggtools.quality.checks import lint as lint_checks
+from yggtools.quality.checks import metrics as metrics_checks
+from yggtools.quality.checks import security as security_checks
+from yggtools.quality.checks import tests as tests_checks
+from yggtools.quality.checks import typecheck as typecheck_checks
+from yggtools.quality.checks import version as version_checks
 from yggtools.quality.pipeline import (
     STAGES,
     PipelineReport,
@@ -34,6 +35,7 @@ from yggtools.quality.runner import (
 from yggtools.repo_init.pipeline import STEPS, STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError, check_uv_available
+from yggtools.versioning import VersionError, increase_project_version
 
 app = typer.Typer(
     name="yggtools",
@@ -42,6 +44,15 @@ app = typer.Typer(
 )
 _console = Console()
 _err_console = Console(stderr=True)
+_REGISTERED_CHECK_MODULES = (
+    format_checks,
+    lint_checks,
+    metrics_checks,
+    security_checks,
+    tests_checks,
+    typecheck_checks,
+    version_checks,
+)
 
 
 # ── pipeline command ─────────────────────────────────────────────────────
@@ -247,6 +258,7 @@ def _add_lint_objectives(
         ("format", "Formatting"),
         ("ruff", "Ruff errors"),
         ("flake8", "Flake8 violations"),
+        ("version-consistency", "Version consistency"),
     ]:
         if name in results:
             r = results[name]
@@ -658,6 +670,39 @@ def init_inplace(
     _console.print("Next steps:")
     _console.print("  make check    [dim]# full quality pipeline[/dim]")
     _console.print("  make test     [dim]# tests only[/dim]")
+
+
+# ── increase-version command ─────────────────────────────────────────────
+
+
+@app.command("increase-version")
+def increase_version_cmd(
+    level: Annotated[
+        int,
+        typer.Argument(help="SemVer level: 1=patch, 2=minor, 3=major."),
+    ],
+    path: Annotated[
+        str | None,
+        typer.Option("--path", help="Project directory (default: cwd)."),
+    ] = None,
+) -> None:
+    """Increase package version across all managed artifacts."""
+    project_dir = Path(path) if path else Path.cwd()
+    try:
+        update = increase_project_version(project_dir, level)
+    except VersionError as exc:
+        _err_console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+
+    _console.print(
+        "[bold green]Version increased[/bold green] "
+        f"[cyan]{update.project_name}[/cyan]: "
+        f"{update.old_version} → {update.new_version}",
+    )
+    for file_path in update.files:
+        relative_path = _relative_to_project(file_path, project_dir)
+        _console.print(f"  [green]✓[/green] {relative_path}")
+    _console.print("  [green]✓[/green] uv lock")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────

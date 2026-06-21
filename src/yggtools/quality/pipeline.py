@@ -26,7 +26,7 @@ class Stage:
 
 
 STAGES: tuple[Stage, ...] = (
-    Stage("Linters", ("format", "ruff", "flake8")),
+    Stage("Linters", ("format", "ruff", "flake8", "version-consistency")),
     Stage("Type checking", ("typecheck",)),
     Stage("Metrics", ("metrics",)),
     Stage("Security", ("security-code", "security-deps")),

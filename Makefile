@@ -10,7 +10,7 @@ format:
 	uv run ruff format src tests
 
 check: clean
-	uv run yggtools pipeline
+	PYTHONPATH=src uv run python -m yggtools.cli pipeline
 
 test: clean
 	uv run pytest
@@ -22,14 +22,14 @@ typecheck: clean
 	uv run mypy src tests
 
 metrics: clean
-	uv run yggtools run metrics
+	PYTHONPATH=src uv run python -m yggtools.cli run metrics
 
 security: clean
-	uv run yggtools run security-code
-	uv run yggtools run security-deps
+	PYTHONPATH=src uv run python -m yggtools.cli run security-code
+	PYTHONPATH=src uv run python -m yggtools.cli run security-deps
 
 build: clean
 	uv build --out-dir dist/
 
 ci: clean
-	uv run yggtools pipeline
+	PYTHONPATH=src uv run python -m yggtools.cli pipeline

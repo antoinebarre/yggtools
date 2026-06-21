@@ -30,8 +30,9 @@ with `make check`.
 Key design decisions:
 
 - **No scripts in the scaffolded project.** The generated `Makefile` calls
-  `uv run yggtools run --all`. Quality tooling stays inside `yggtools` and
-  is updated by upgrading the tool, not by copying files into every project.
+  `PYTHONPATH=src uv run python -m yggtools.cli pipeline`. Quality tooling
+  stays inside `yggtools` and is updated by upgrading the tool, not by
+  copying files into every project.
 - **`uv init --lib` first.** The scaffolding delegates to `uv init --lib`,
   which creates the canonical `src/` layout and keeps the project structure
   in sync with uv conventions.
@@ -341,18 +342,18 @@ Claude Code reads this file automatically when you open the project.
 
 ### `Makefile`
 
-All targets delegate to `yggtools run` or standard `uv` commands.
+All targets delegate to `python -m yggtools.cli` or standard `uv` commands.
 
 | Target | What it does |
 |--------|-------------|
-| `make check` | `uv run yggtools run --all` |
-| `make ci` | `uv run yggtools run --all --ci` |
+| `make check` | `PYTHONPATH=src uv run python -m yggtools.cli pipeline` |
+| `make ci` | `PYTHONPATH=src uv run python -m yggtools.cli pipeline` |
 | `make format` | `uv run ruff format src tests` |
 | `make test` | `uv run pytest` |
 | `make lint` | `uv run ruff check src tests` |
 | `make typecheck` | `uv run mypy src tests` |
-| `make metrics` | `uv run yggtools run metrics` |
-| `make security` | `uv run yggtools run security-code && security-deps` |
+| `make metrics` | `PYTHONPATH=src uv run python -m yggtools.cli run metrics` |
+| `make security` | `PYTHONPATH=src uv run python -m yggtools.cli run security-code && security-deps` |
 | `make clean` | Remove `work/` contents (keep `.gitkeep`) |
 | `make build` | `uv build → dist/` |
 
@@ -517,12 +518,16 @@ git push
 ### Releasing a new version
 
 ```bash
-# 1. Bump the version in pyproject.toml
-# 2. Run the full pipeline
+# 1. Bump every managed version artifact
+yggtools increase-version 1  # patch
+# yggtools increase-version 2  # minor
+# yggtools increase-version 3  # major
+
+# 2. Run the full pipeline, including version-consistency
 make check
 
 # 3. Commit, tag, push — CI runs automatically
-git add pyproject.toml
+git add pyproject.toml src/*/__init__.py uv.lock
 git commit -m "chore: release v1.1.0"
 git tag v1.1.0
 git push origin main --tags

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
 
@@ -21,6 +22,7 @@ from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
 from yggtools.repo_init.pipeline import STEPS_INIT, PipelineStep
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError
+from yggtools.versioning import VersionError
 
 _runner = CliRunner()
 
@@ -649,6 +651,42 @@ class TestInit:
         step_names = [s.name for s in received_steps]
         assert "uv init --lib" not in step_names
         assert len(received_steps) == len(STEPS_INIT)
+
+
+class TestIncreaseVersion:
+    """Tests for increase-version command."""
+
+    def test_exits_0_and_prints_update(self, tmp_path: Path) -> None:
+        """Requirement: increase-version reports successful bump."""
+        with patch(
+            "yggtools.cli.increase_project_version",
+            return_value=SimpleNamespace(
+                project_name="my-lib",
+                old_version="1.2.3",
+                new_version="1.2.4",
+                files=(tmp_path / "pyproject.toml",),
+            ),
+        ):
+            result = _runner.invoke(
+                app,
+                ["increase-version", "1", "--path", str(tmp_path)],
+            )
+        assert result.exit_code == 0
+        assert "1.2.3" in result.output
+        assert "1.2.4" in result.output
+
+    def test_exits_1_on_version_error(self, tmp_path: Path) -> None:
+        """Requirement: version errors are shown cleanly."""
+        with patch(
+            "yggtools.cli.increase_project_version",
+            side_effect=VersionError("bad version"),
+        ):
+            result = _runner.invoke(
+                app,
+                ["increase-version", "1", "--path", str(tmp_path)],
+            )
+        assert result.exit_code == 1
+        assert "bad version" in result.output
 
 
 class TestRun:

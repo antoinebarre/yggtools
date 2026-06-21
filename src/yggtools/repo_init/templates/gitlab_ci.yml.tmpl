@@ -21,7 +21,7 @@ stages:
   stage: quality
   image: python:{{ python_version }}-slim
   script:
-    - uv run yggtools pipeline
+    - PYTHONPATH=src uv run python -m yggtools.cli pipeline
   artifacts:
     when: always
     paths:
@@ -33,7 +33,7 @@ stages:
   stage: quality
   image: python:3.13-slim
   script:
-    - uv run yggtools pipeline
+    - PYTHONPATH=src uv run python -m yggtools.cli pipeline
   artifacts:
     when: always
     paths:

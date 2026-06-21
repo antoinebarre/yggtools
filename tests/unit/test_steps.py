@@ -192,13 +192,13 @@ class TestStepWriteMakefile:
         step_write_makefile(ctx)
         assert (ctx.project_dir / "Makefile").exists()
 
-    def test_makefile_references_yggtools_run(self, tmp_path: Path) -> None:
-        """Requirement: Makefile must invoke yggtools run."""
+    def test_makefile_references_yggtools_module(self, tmp_path: Path) -> None:
+        """Requirement: Makefile must invoke yggtools as a module."""
         ctx = _ctx(tmp_path)
         ctx.project_dir.mkdir(parents=True)
         step_write_makefile(ctx)
         content = (ctx.project_dir / "Makefile").read_text()
-        assert "yggtools run" in content
+        assert "python -m yggtools.cli" in content
 
     def test_skips_in_dry_run(self, tmp_path: Path) -> None:
         """Requirement: step_write_makefile must not write in dry-run mode."""
