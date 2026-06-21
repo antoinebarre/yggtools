@@ -28,6 +28,7 @@ make check
 |---------|-------------|
 | `yggtools init-repo NAME` | Scaffold a new Python package |
 | `yggtools init` | Complete an existing uv project in place |
+| `yggtools reset` | Restore yggtools-generated AI, CI, and Makefile files |
 | `yggtools pipeline` | Run the full staged quality pipeline |
 | `yggtools run [CHECK]` | Run quality checks on the current project |
 | `yggtools version` | List versions found in package artifacts |

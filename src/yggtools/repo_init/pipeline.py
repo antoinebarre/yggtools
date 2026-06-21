@@ -59,6 +59,24 @@ STEPS_FULL: list[PipelineStep] = [
 # Used by ``yggtools init`` (after the user already ran ``uv init --lib``).
 STEPS_INIT: list[PipelineStep] = list(_COMPLETION_STEPS)
 
+# Reset pipelines: rewrite only generated files that are safe to restore.
+# Used by ``yggtools reset``.
+STEPS_RESET_AI: list[PipelineStep] = [
+    PipelineStep("write CLAUDE.md", step_write_claude_md),
+    PipelineStep("write AGENTS.md", step_write_agents_md),
+]
+STEPS_RESET_CI: list[PipelineStep] = [
+    PipelineStep("write CI workflows", step_write_ci),
+]
+STEPS_RESET_SCRIPTS: list[PipelineStep] = [
+    PipelineStep("write Makefile", step_write_makefile),
+]
+STEPS_RESET: list[PipelineStep] = [
+    *STEPS_RESET_AI,
+    *STEPS_RESET_CI,
+    *STEPS_RESET_SCRIPTS,
+]
+
 # Backward-compatible alias: equivalent to STEPS_FULL.
 STEPS: list[PipelineStep] = STEPS_FULL
 

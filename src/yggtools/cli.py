@@ -36,7 +36,15 @@ from yggtools.quality.runner import (
     registered_checks,
     run_one,
 )
-from yggtools.repo_init.pipeline import STEPS, STEPS_INIT, PipelineStep
+from yggtools.repo_init.pipeline import (
+    STEPS,
+    STEPS_INIT,
+    STEPS_RESET,
+    STEPS_RESET_AI,
+    STEPS_RESET_CI,
+    STEPS_RESET_SCRIPTS,
+    PipelineStep,
+)
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError, check_uv_available
 from yggtools.versioning import VersionError, increase_project_version
@@ -406,12 +414,12 @@ def _print_artifact_table(
     for artifact_path, digest in report.check_reports.values():
         table.add_row(
             _relative_to_project(artifact_path, project_dir),
-            digest[:16] + "…",
+            digest,
         )
     if report.summary_path:
         table.add_row(
             _relative_to_project(report.summary_path, project_dir),
-            report.summary_digest[:16] + "…",
+            report.summary_digest,
         )
 
     reports_dir = (
@@ -675,6 +683,84 @@ def init_inplace(
     _console.print("Next steps:")
     _console.print("  make check    [dim]# full quality pipeline[/dim]")
     _console.print("  make test     [dim]# tests only[/dim]")
+
+
+@app.command("reset")
+def reset_cmd(
+    only: Annotated[
+        str | None,
+        typer.Option(
+            "--only",
+            help="Subset to reset: all, ai, ci, or scripts.",
+        ),
+    ] = None,
+    python: Annotated[
+        str | None,
+        typer.Option(
+            "--python",
+            help=(
+                "Target Python version for CI "
+                "(default: .python-version or 3.12)."
+            ),
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run/--no-dry-run",
+            help="Show what would be reset without writing anything.",
+        ),
+    ] = False,
+) -> None:
+    """Restore yggtools-generated files in the current repository.
+
+    Rewrites only the generated AI instructions, CI workflows, and Makefile.
+    It does not touch dependencies, ``pyproject.toml``, source files, tests,
+    or git history.
+    """
+    cwd = Path.cwd()
+    if not (cwd / "pyproject.toml").exists():
+        _err_console.print(
+            "[bold red]Error:[/bold red] No pyproject.toml found in the "
+            "current directory.",
+        )
+        raise typer.Exit(1)
+
+    steps = _reset_steps(only)
+    if steps is None:
+        _err_console.print(
+            "[bold red]Error:[/bold red] --only must be one of: "
+            "all, ai, ci, scripts.",
+        )
+        raise typer.Exit(1)
+
+    python_version = python or _read_python_version(cwd)
+    ctx = RepoContext(
+        project_name=cwd.name,
+        python_version=python_version,
+        parent_dir=cwd.parent,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        _print_reset_dry_run_plan(ctx, steps)
+        return
+
+    _console.print(
+        "[bold]Resetting yggtools files[/bold] — "
+        f"[cyan]{ctx.project_name}[/cyan]"
+    )
+    try:
+        _run_with_progress(ctx, steps=steps)
+    except StepError as exc:
+        _err_console.print(f"\n[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        _err_console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+
+    _console.print()
+    _console.print("[bold green]Generated files restored.[/bold green]")
 
 
 # ── increase-version command ─────────────────────────────────────────────
@@ -1067,6 +1153,61 @@ def _print_dry_run_plan(
         ]
     for action in actions:
         _console.print(f"  [dim]would:[/dim] {action}")
+
+
+def _reset_steps(only: str | None) -> list[PipelineStep] | None:
+    """Return reset steps for the requested subset.
+
+    Args:
+        only: Optional subset name from the CLI.
+
+    Returns:
+        The matching reset steps, or None for an invalid subset.
+    """
+    normalized = (only or "all").lower()
+    groups = {
+        "all": STEPS_RESET,
+        "ai": STEPS_RESET_AI,
+        "ci": STEPS_RESET_CI,
+        "scripts": STEPS_RESET_SCRIPTS,
+    }
+    return groups.get(normalized)
+
+
+def _read_python_version(project_dir: Path) -> str:
+    """Read the project's Python version for generated CI files.
+
+    Args:
+        project_dir: Project root directory.
+
+    Returns:
+        The .python-version content, or the yggtools default.
+    """
+    python_version = project_dir / ".python-version"
+    if not python_version.exists():
+        return "3.12"
+    content = python_version.read_text(encoding="utf-8").strip()
+    return content or "3.12"
+
+
+def _print_reset_dry_run_plan(
+    ctx: RepoContext,
+    steps: list[PipelineStep],
+) -> None:
+    """Print the list of reset actions without writing files.
+
+    Args:
+        ctx: Pipeline context.
+        steps: Reset steps selected by the CLI.
+    """
+    _console.print(
+        "[bold yellow]Dry run — nothing will be written[/bold yellow]",
+    )
+    _console.print(
+        f"Project: [cyan]{ctx.project_name}[/cyan] → {ctx.project_dir}",
+    )
+    for step in steps:
+        _console.print(f"  [dim]would:[/dim] {step.name}")
 
 
 def main() -> None:  # pragma: no cover

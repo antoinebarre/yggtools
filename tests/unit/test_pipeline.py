@@ -10,6 +10,10 @@ from yggtools.repo_init.pipeline import (
     STEPS,
     STEPS_FULL,
     STEPS_INIT,
+    STEPS_RESET,
+    STEPS_RESET_AI,
+    STEPS_RESET_CI,
+    STEPS_RESET_SCRIPTS,
     run_init_pipeline,
     run_pipeline,
 )
@@ -62,6 +66,30 @@ def test_steps_init_is_steps_full_minus_uv_init() -> None:
 def test_steps_is_alias_for_steps_full() -> None:
     """Requirement: STEPS must be the same list as STEPS_FULL."""
     assert STEPS is STEPS_FULL
+
+
+def test_steps_reset_contains_only_generated_file_steps() -> None:
+    """Requirement: reset must not run broad init steps."""
+    names = [s.name for s in STEPS_RESET]
+    assert names == [
+        "write CLAUDE.md",
+        "write AGENTS.md",
+        "write CI workflows",
+        "write Makefile",
+    ]
+    assert "add dev dependencies" not in names
+    assert "patch pyproject.toml" not in names
+    assert "git commit" not in names
+
+
+def test_steps_reset_groups_partition_all_reset_steps() -> None:
+    """Requirement: reset groups must compose the full reset step list."""
+    grouped = [
+        *STEPS_RESET_AI,
+        *STEPS_RESET_CI,
+        *STEPS_RESET_SCRIPTS,
+    ]
+    assert grouped == STEPS_RESET
 
 
 def test_run_pipeline_calls_all_steps_in_order(tmp_path: Path) -> None:
