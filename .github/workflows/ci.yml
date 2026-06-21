@@ -25,7 +25,7 @@ jobs:
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - name: Quality pipeline
-        run: uv run yggtools pipeline
+        run: PYTHONPATH=src uv run python -m yggtools.cli pipeline
       - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4

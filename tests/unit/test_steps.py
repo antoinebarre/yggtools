@@ -11,7 +11,9 @@ from yggtools.repo_init.steps import (
     RepoContext,
     StepError,
     _collect_pyproject_additions,
+    _package_name,
     step_add_dev_deps,
+    step_ensure_package_layout,
     step_git_commit,
     step_patch_pyproject,
     step_uv_init,
@@ -124,6 +126,112 @@ class TestStepAddDevDeps:
             step_add_dev_deps(ctx)
 
 
+class TestStepEnsurePackageLayout:
+    """Tests for step_ensure_package_layout."""
+
+    def _minimal_pyproject(
+        self,
+        project_dir: Path,
+        *,
+        name: str = "my-lib",
+        version: str = "0.1.0",
+    ) -> None:
+        """Write a minimal pyproject.toml.
+
+        Args:
+            project_dir: Project directory.
+            name: Project distribution name.
+            version: Project version.
+        """
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "pyproject.toml").write_text(
+            f'[project]\nname = "{name}"\nversion = "{version}"\n',
+            encoding="utf-8",
+        )
+
+    def test_creates_src_package_when_missing(self, tmp_path: Path) -> None:
+        """Requirement: missing src package layout must be created."""
+        ctx = _ctx(tmp_path)
+        self._minimal_pyproject(ctx.project_dir)
+        step_ensure_package_layout(ctx)
+        init_file = ctx.project_dir / "src" / "my_lib" / "__init__.py"
+        assert init_file.exists()
+        assert '__version__ = "0.1.0"' in init_file.read_text()
+
+    def test_appends_version_to_existing_init(self, tmp_path: Path) -> None:
+        """Requirement: existing package initializer gets __version__."""
+        ctx = _ctx(tmp_path)
+        self._minimal_pyproject(ctx.project_dir)
+        package_dir = ctx.project_dir / "src" / "my_lib"
+        package_dir.mkdir(parents=True)
+        (package_dir / "__init__.py").write_text(
+            '"""Existing package."""\n',
+            encoding="utf-8",
+        )
+        step_ensure_package_layout(ctx)
+        content = (package_dir / "__init__.py").read_text()
+        assert '"""Existing package."""' in content
+        assert '__version__ = "0.1.0"' in content
+
+    def test_preserves_existing_version(self, tmp_path: Path) -> None:
+        """Requirement: existing __version__ must not be overwritten."""
+        ctx = _ctx(tmp_path)
+        self._minimal_pyproject(ctx.project_dir, version="0.2.0")
+        package_dir = ctx.project_dir / "src" / "my_lib"
+        package_dir.mkdir(parents=True)
+        (package_dir / "__init__.py").write_text(
+            '__version__ = "0.1.0"\n',
+            encoding="utf-8",
+        )
+        step_ensure_package_layout(ctx)
+        assert (package_dir / "__init__.py").read_text() == (
+            '__version__ = "0.1.0"\n'
+        )
+
+    def test_uses_project_name_from_pyproject(self, tmp_path: Path) -> None:
+        """Requirement: package dir follows [project].name."""
+        ctx = _ctx(tmp_path)
+        self._minimal_pyproject(ctx.project_dir, name="other-lib")
+        step_ensure_package_layout(ctx)
+        assert (ctx.project_dir / "src" / "other_lib").exists()
+
+    def test_skips_in_dry_run(self, tmp_path: Path) -> None:
+        """Requirement: layout repair must skip in dry-run mode."""
+        ctx = _ctx(tmp_path, dry_run=True)
+        self._minimal_pyproject(ctx.project_dir)
+        step_ensure_package_layout(ctx)
+        assert not (ctx.project_dir / "src").exists()
+
+    def test_fails_without_project_table(self, tmp_path: Path) -> None:
+        """Requirement: malformed pyproject fails clearly."""
+        ctx = _ctx(tmp_path)
+        ctx.project_dir.mkdir(parents=True)
+        (ctx.project_dir / "pyproject.toml").write_text(
+            'project = "bad"\n',
+            encoding="utf-8",
+        )
+        with pytest.raises(StepError):
+            step_ensure_package_layout(ctx)
+
+    def test_fails_without_project_name_or_version(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: name and version are required."""
+        ctx = _ctx(tmp_path)
+        ctx.project_dir.mkdir(parents=True)
+        (ctx.project_dir / "pyproject.toml").write_text(
+            "[project]\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(StepError):
+            step_ensure_package_layout(ctx)
+
+    def test_package_name_normalizes_hyphen(self) -> None:
+        """Requirement: package name maps hyphen to underscore."""
+        assert _package_name("my-lib") == "my_lib"
+
+
 class TestCollectPyprojectAdditions:
     """Tests for _collect_pyproject_additions."""
 
@@ -173,6 +281,20 @@ class TestStepPatchPyproject:
         step_patch_pyproject(ctx)
         content = (ctx.project_dir / "pyproject.toml").read_text()
         assert "[tool.yggtools.code_metrics]" in content
+
+    def test_uses_project_name_from_pyproject(self, tmp_path: Path) -> None:
+        """Requirement: patching must use [project].name for src paths."""
+        ctx = _ctx(tmp_path)
+        self._minimal_pyproject(ctx.project_dir)
+        pyproject = ctx.project_dir / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\nname = "other-lib"\nversion = "0.1.0"\n',
+            encoding="utf-8",
+        )
+        step_patch_pyproject(ctx)
+        content = pyproject.read_text()
+        assert 'source = ["src/other_lib"]' in content
+        assert 'paths = ["src/other_lib", "tests"]' in content
 
     def test_skips_in_dry_run(self, tmp_path: Path) -> None:
         """Requirement: step_patch_pyproject must not write in dry-run mode."""

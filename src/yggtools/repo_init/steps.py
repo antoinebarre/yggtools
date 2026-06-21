@@ -8,6 +8,7 @@ responsibility of ``pipeline.py``.
 from __future__ import annotations
 
 import importlib.resources
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,9 @@ class StepError(RuntimeError):
     """Raised when a pipeline step fails for a recoverable reason."""
 
 
+_INIT_VERSION_RE = re.compile(r"^__version__\s*=", re.MULTILINE)
+
+
 def step_uv_init(ctx: RepoContext) -> None:
     """Run ``uv init --lib`` to create the base project structure.
 
@@ -74,6 +78,83 @@ def step_uv_init(ctx: RepoContext) -> None:
     except CommandError as exc:
         msg = f"uv init --lib failed: {exc}"
         raise StepError(msg) from exc
+
+
+def step_ensure_package_layout(ctx: RepoContext) -> None:
+    """Ensure the project has the expected ``src/<package>`` layout.
+
+    This repairs projects created with ``uv init`` without ``--lib`` by
+    creating the missing ``src`` package directory and a minimal
+    ``__init__.py``.  Existing packages are preserved; if an initializer
+    exists without ``__version__``, the version assignment is appended.
+
+    Args:
+        ctx: Pipeline context.
+
+    Raises:
+        StepError: If pyproject.toml is missing required project metadata.
+    """
+    if ctx.dry_run:
+        return
+    project_name, version = _read_project_identity(ctx)
+    package_name = _package_name(project_name)
+    package_dir = ctx.project_dir / "src" / package_name
+    package_dir.mkdir(parents=True, exist_ok=True)
+    init_file = package_dir / "__init__.py"
+    if not init_file.exists():
+        init_file.write_text(
+            f'"""Top-level package for {project_name}."""\n\n'
+            f'__version__ = "{version}"\n',
+            encoding="utf-8",
+        )
+        return
+    content = init_file.read_text(encoding="utf-8")
+    if _INIT_VERSION_RE.search(content):
+        return
+    separator = "" if content.endswith("\n") else "\n"
+    init_file.write_text(
+        f'{content}{separator}\n__version__ = "{version}"\n',
+        encoding="utf-8",
+    )
+
+
+def _read_project_identity(ctx: RepoContext) -> tuple[str, str]:
+    """Read project name and version from pyproject.toml.
+
+    Args:
+        ctx: Pipeline context.
+
+    Returns:
+        Project name and version.
+
+    Raises:
+        StepError: If the pyproject metadata is absent or malformed.
+    """
+    pyproject = ctx.project_dir / "pyproject.toml"
+    with pyproject.open("rb") as fh:
+        data = tomllib.load(fh)
+    project = data.get("project", {})
+    if not isinstance(project, dict):
+        msg = "pyproject.toml must contain a [project] table."
+        raise StepError(msg)
+    name = project.get("name")
+    version = project.get("version")
+    if not isinstance(name, str) or not isinstance(version, str):
+        msg = "pyproject.toml must define [project].name and version."
+        raise StepError(msg)
+    return name, version
+
+
+def _package_name(project_name: str) -> str:
+    """Normalize a distribution name to an import package name.
+
+    Args:
+        project_name: Distribution name from pyproject.toml.
+
+    Returns:
+        Import package directory name.
+    """
+    return project_name.replace("-", "_")
 
 
 def step_add_dev_deps(ctx: RepoContext) -> None:
@@ -267,7 +348,8 @@ def step_patch_pyproject(ctx: RepoContext) -> None:
     pyproject = ctx.project_dir / "pyproject.toml"
     with pyproject.open("rb") as fh:
         existing = tomllib.load(fh)
-    package_name = ctx.project_name.replace("-", "_")
+    project_name, _version = _read_project_identity(ctx)
+    package_name = _package_name(project_name)
     additions = _collect_pyproject_additions(existing, package_name)
     if additions:
         with pyproject.open("a", encoding="utf-8") as fh:
@@ -372,7 +454,7 @@ def step_write_claude_md(ctx: RepoContext) -> None:
     """
     if ctx.dry_run:
         return
-    package_name = ctx.project_name.replace("-", "_")
+    package_name = _package_name(ctx.project_name)
     content = _render_template("CLAUDE.md.tmpl", package_name=package_name)
     (ctx.project_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
 

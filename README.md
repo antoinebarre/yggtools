@@ -27,8 +27,11 @@ make check
 | Command | Description |
 |---------|-------------|
 | `yggtools init-repo NAME` | Scaffold a new Python package |
+| `yggtools init` | Complete an existing uv project in place |
+| `yggtools pipeline` | Run the full staged quality pipeline |
 | `yggtools run [CHECK]` | Run quality checks on the current project |
-| `yggtools run --all` | Run all registered quality checks |
+| `yggtools version` | List versions found in package artifacts |
+| `yggtools increase-version LEVEL` | Bump patch/minor/major versions |
 
 ## Quality checks
 
@@ -37,7 +40,7 @@ make check
 | Format | `ruff format --check` |
 | Lint (ruff) | `ruff check` |
 | Lint (flake8) | `flake8` |
-| Docstrings | built-in AST scan |
+| Version consistency | `pyproject.toml`, `__init__.py`, `uv.lock` |
 | Type check | `mypy --strict` |
 | Metrics | built-in CC + line-count |
 | Security (code) | `bandit` |

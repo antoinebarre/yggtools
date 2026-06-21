@@ -50,8 +50,19 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Verify tag matches package version
+        run: |
+          VERSION="$(python -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])')"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
+            exit 1
+          fi
+
       - name: Build package
-        run: uv build --out-dir dist/
+        run: |
+          rm -rf dist/
+          uv build --out-dir dist/
 
       - name: Validate package
         run: uv run twine check dist/*
