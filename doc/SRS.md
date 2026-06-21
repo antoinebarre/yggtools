@@ -1,8 +1,8 @@
 # SRS — Software Requirements Specification
 
 **Project:** yggtools
-**Version:** 2.0
-**Date:** 2026-06-15
+**Version:** 2.1
+**Date:** 2026-06-21
 **Author:** Antoine Barré
 **Status:** Approved
 
@@ -34,7 +34,9 @@ top of `uv` and provides a built-in quality pipeline accessible through a
 yggtools covers:
 
 - Initialising a new Python package (`yggtools init-repo`)
-- Running quality checks on any project (`yggtools run`)
+- Running quality checks on any project (`yggtools pipeline`, `yggtools run`)
+- Inspecting and bumping package versions (`yggtools version`,
+  `yggtools increase-version`)
 - Generating CI workflow files for GitHub Actions
 
 yggtools does not cover:
@@ -59,7 +61,8 @@ yggtools does not cover:
 
 yggtools is a developer tool (`dev tool`) installed globally via
 `uv tool install yggtools`. It is added as a dev dependency in scaffolded
-projects so that `make check` delegates to `yggtools run --all`.
+projects so that `make check` delegates to
+`PYTHONPATH=src uv run python -m yggtools.cli pipeline`.
 
 ```
 Developer
@@ -71,14 +74,14 @@ Developer
   │       │
   │       ▼
   │  my-lib/
-  │  ├── Makefile  (calls: uv run yggtools run --all)
+  │  ├── Makefile  (calls: python -m yggtools.cli pipeline)
   │  ├── src/
   │  ├── tests/
   │  └── work/
   │
   └─ cd my-lib && make check
           │
-          └─ uv run yggtools run --all
+          └─ PYTHONPATH=src uv run python -m yggtools.cli pipeline
 ```
 
 ### 2.2 Main functions
@@ -87,11 +90,13 @@ Developer
 |----|----------|
 | F-01 | Scaffold a Python package (`init-repo`) |
 | F-02 | Patch `pyproject.toml` with quality tool configuration |
-| F-03 | Generate a `Makefile` that delegates to `yggtools run` |
+| F-03 | Generate a `Makefile` that delegates to `python -m yggtools.cli` |
 | F-04 | Install dev dependencies via `uv add --dev` |
 | F-05 | Run one or all quality checks on any project (`run`) |
-| F-06 | Write a Markdown quality report (`run --ci`) |
+| F-06 | Write JSON quality artifacts under `work/reports/` |
 | F-07 | Generate GitHub Actions CI workflow |
+| F-08 | Inspect package version artifacts |
+| F-09 | Increase package version artifacts with SemVer levels |
 
 ### 2.3 User profile
 
@@ -128,61 +133,88 @@ required quality tools as dev dependencies of the new project.
 
 #### REQ-INIT-04
 
-Step 3 SHALL append the following sections to `pyproject.toml` if they are
+Step 3 SHALL ensure the package layout exists. It SHALL create
+`src/<package>/__init__.py` when missing, and SHALL add `__version__` when
+the package initializer exists without one. The package name and version
+SHALL be read from `[project].name` and `[project].version`.
+
+#### REQ-INIT-05
+
+Step 4 SHALL append the following sections to `pyproject.toml` if they are
 absent: `[tool.pytest.ini_options]`, `[tool.coverage.run]`, `[tool.mypy]`,
 `[tool.ruff]`, `[tool.ruff.lint]`, `[tool.ruff.lint.pydocstyle]`,
 `[tool.flake8]`, `[tool.bandit]`, `[tool.yggtools.code_metrics]`.
 
-#### REQ-INIT-05
-
-Step 4 SHALL write a `Makefile` whose `check` target calls
-`uv run yggtools run --all` and whose `ci` target calls
-`uv run yggtools run --all --ci`.
-
 #### REQ-INIT-06
 
-Step 5 SHALL create `tests/__init__.py` and `tests/conftest.py`.
+Step 5 SHALL write a `Makefile` whose `check` and `ci` targets call
+`PYTHONPATH=src uv run python -m yggtools.cli pipeline`.
 
 #### REQ-INIT-07
 
-Step 6 SHALL create `work/.gitkeep`.
+Step 6 SHALL write `CLAUDE.md`.
 
 #### REQ-INIT-08
 
-Step 7 SHALL generate `.github/workflows/ci.yml` unless `--no-git` is set.
-The workflow SHALL run `make ci` on Python 3.12 and 3.13 with
-`fail-fast: false`, and upload `work/report.md` as an artifact.
+Step 7 SHALL create `tests/__init__.py` and `tests/conftest.py`.
 
 #### REQ-INIT-09
 
-Step 8 SHALL create a git commit unless `--no-git` is set.
+Step 8 SHALL create `work/.gitkeep`.
 
 #### REQ-INIT-10
+
+Step 9 SHALL generate CI workflow files unless `--no-git` is set.
+The workflow SHALL run `make ci` on Python 3.12 and 3.13 with
+`fail-fast: false`, and upload `work/reports/` as an artifact.
+
+#### REQ-INIT-11
+
+Step 10 SHALL create a git commit unless `--no-git` is set.
+
+#### REQ-INIT-12
 
 `yggtools init-repo` SHALL support `--dry-run`, which prints the planned
 actions without executing them.
 
-#### REQ-INIT-11
+#### REQ-INIT-13
 
 `yggtools init-repo` SHALL support `--no-git`, which skips the git commit
 and the CI workflow generation.
 
-#### REQ-INIT-12
+#### REQ-INIT-14
 
 `yggtools init-repo` SHALL support `--python VERSION` to set the target
 Python version (default `3.12`).
 
-#### REQ-INIT-13
+#### REQ-INIT-15
 
 `yggtools init-repo` SHALL exit with code `1` and print a clear error
 message if `uv` is not found in `PATH`.
 
-#### REQ-INIT-14
+#### REQ-INIT-16
 
 `yggtools init-repo` SHALL exit with code `1` and print a clear error
 message if any pipeline step fails.
 
-### 3.2 `yggtools run`
+### 3.2 `yggtools pipeline`
+
+#### REQ-PIPE-01
+
+`yggtools pipeline` SHALL execute all staged quality checks in deterministic
+order and print a Rich summary dashboard.
+
+#### REQ-PIPE-02
+
+`yggtools pipeline` SHALL always write per-check JSON artifacts and SHA-256
+sidecars under `work/reports/`, plus a consolidated `pipeline.json`.
+
+#### REQ-PIPE-03
+
+`yggtools pipeline` SHALL exit with code `0` when every check passes, and
+code `1` otherwise.
+
+### 3.3 `yggtools run`
 
 #### REQ-RUN-01
 
@@ -196,8 +228,8 @@ code `1` if the check fails or the name is unknown.
 
 #### REQ-RUN-03
 
-`yggtools run --all --ci` SHALL additionally write a Markdown quality report
-to `<project>/work/report.md` after all checks complete.
+`yggtools run --all --ci` SHALL be accepted for backward compatibility. The
+`--ci` flag SHALL be a no-op because JSON artifacts are always written.
 
 #### REQ-RUN-04
 
@@ -214,7 +246,7 @@ code `1` if any check fails.
 `yggtools run` without `--all` and without a check name SHALL exit with
 code `1` and print a usage error.
 
-### 3.3 Quality checks
+### 3.4 Quality checks
 
 #### REQ-CHECK-01 — Format
 
@@ -231,10 +263,11 @@ number of errors.
 The `flake8` check SHALL run `uv run flake8 src tests` and report the
 number of violations.
 
-#### REQ-CHECK-04 — Docstrings
+#### REQ-CHECK-04 — Version consistency
 
-The `docstrings` check SHALL run `uv run flake8 --select=D` to verify
-Google-style docstrings.
+The `version-consistency` check SHALL compare `[project].version`,
+`src/<package>/__init__.py::__version__`, and the editable local package
+entry in `uv.lock`.
 
 #### REQ-CHECK-05 — Type check
 
@@ -263,7 +296,29 @@ the check SHALL pass immediately.
 
 The `tests` check SHALL run `uv run pytest` and report the summary line.
 
-### 3.4 Registry
+### 3.5 Version commands
+
+#### REQ-VERSION-01
+
+`yggtools version` SHALL list all managed package version artifacts and
+their discovered versions.
+
+#### REQ-VERSION-02
+
+`yggtools version` SHALL exit with code `1` if a required version artifact
+is missing or if versions diverge.
+
+#### REQ-VERSION-03
+
+`yggtools increase-version LEVEL` SHALL accept levels `1`, `2`, and `3`,
+mapping to SemVer patch, minor, and major increments.
+
+#### REQ-VERSION-04
+
+`yggtools increase-version` SHALL update `pyproject.toml`,
+`src/<package>/__init__.py`, and `uv.lock`, then run `uv lock`.
+
+### 3.6 Registry
 
 #### REQ-REG-01
 
@@ -288,7 +343,7 @@ internet connection (excluding uv dependency download time).
 
 #### REQ-PERF-02
 
-`yggtools run --all` on the yggtools repository itself SHALL complete in
+`yggtools pipeline` on the yggtools repository itself SHALL complete in
 under 60 seconds.
 
 ### 4.2 Reliability
@@ -352,7 +407,7 @@ The CI workflow SHALL test on Python 3.12 and 3.13 with `fail-fast: false`.
 
 #### REQ-DEVCI-03
 
-The CI workflow SHALL upload `work/report.md` as an artifact after every
+The CI workflow SHALL upload `work/reports/` as an artifact after every
 run, even on failure.
 
 #### REQ-DEVCI-04

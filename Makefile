@@ -29,6 +29,7 @@ security: clean
 	PYTHONPATH=src uv run python -m yggtools.cli run security-deps
 
 build: clean
+	rm -rf dist
 	uv build --out-dir dist/
 
 ci: clean

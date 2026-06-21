@@ -1,8 +1,8 @@
 # SDD — Software Design Document
 
 **Project:** yggtools
-**Version:** 2.0
-**Date:** 2026-06-15
+**Version:** 2.1
+**Date:** 2026-06-21
 **Author:** Antoine Barré
 **Status:** Approved
 
@@ -58,21 +58,23 @@
 ```
 src/yggtools/
 ├── __init__.py
-├── cli.py                    # Typer app: init-repo, run
+├── cli.py                    # Typer app: init, pipeline, run, version
 ├── uv.py                     # Adapter: uv and git subprocess calls
+├── versioning.py             # SemVer bumping across package artifacts
 ├── quality/
 │   ├── __init__.py
+│   ├── pipeline.py           # Staged orchestration + JSON artifacts
 │   ├── runner.py             # Registry, CheckFn protocol, run_all / run_one
-│   ├── report.py             # write_report() → work/report.md
+│   ├── report.py             # Legacy Markdown report helper
 │   └── checks/
 │       ├── __init__.py
 │       ├── format.py         # @register("format")
 │       ├── lint.py           # @register("ruff"), @register("flake8")
-│       ├── docstrings.py     # @register("docstrings")
 │       ├── typecheck.py      # @register("typecheck")
 │       ├── metrics.py        # @register("metrics")
 │       ├── security.py       # @register("security-code"), @register("security-deps")
-│       └── tests.py          # @register("tests")
+│       ├── tests.py          # @register("tests")
+│       └── version.py        # @register("version-consistency")
 └── repo_init/
     ├── __init__.py
     ├── pipeline.py           # STEPS list + run_pipeline()
@@ -80,8 +82,9 @@ src/yggtools/
     └── templates/            # Jinja2 templates (package resource)
         ├── __init__.py
         ├── Makefile.tmpl
-        ├── ci.yml.tmpl
-        └── conftest.py.tmpl
+        ├── github_ci.yml.tmpl
+        ├── gitlab_ci.yml.tmpl
+        └── CLAUDE.md.tmpl
 ```
 
 ---
@@ -141,7 +144,7 @@ Every check:
 | `format.py` | `format` | `ruff format --check src tests` |
 | `lint.py` | `ruff` | `ruff check src tests` |
 | `lint.py` | `flake8` | `flake8 src tests` |
-| `docstrings.py` | `docstrings` | `flake8 --select=D src tests` |
+| `version.py` | `version-consistency` | Version artifact consistency |
 | `typecheck.py` | `typecheck` | `mypy src tests` |
 | `metrics.py` | `metrics` | Pure Python AST analysis |
 | `security.py` | `security-code` | `bandit -r src` |
@@ -174,7 +177,22 @@ Configuration defaults (read from `[tool.yggtools.code_metrics]`):
 | `max_cyclomatic_complexity` | `10` |
 | `max_module_logical_lines` | `900` |
 
-### 3.4 `quality/report.py`
+### 3.4 `quality/pipeline.py`
+
+```python
+@dataclass(frozen=True)
+class Stage:
+    name: str
+    checks: tuple[str, ...]
+
+def run_pipeline(project_dir: Path) -> PipelineResult: ...
+def write_pipeline_artifacts(result, project_dir, output_dir) -> PipelineReport: ...
+```
+
+The pipeline runs staged checks in deterministic order and writes one JSON
+artifact per check plus `pipeline.json`, each with a `.sha256` sidecar.
+
+### 3.5 `quality/report.py`
 
 ```python
 def write_report(
@@ -184,9 +202,8 @@ def write_report(
 ) -> None: ...
 ```
 
-Writes a Markdown file with a summary table (pass/fail counts), a results
-table (name, status, detail), and a timestamp. Creates parent directories
-if they do not exist.
+Legacy helper for Markdown report output. The primary pipeline artifact
+contract is now JSON under `work/reports/`.
 
 ---
 
@@ -215,12 +232,13 @@ Steps raise `StepError` on failure; they never swallow exceptions silently.
 | Function | What it does |
 |----------|-------------|
 | `step_uv_init` | Calls `uv_init_lib(parent_dir, name, python)` |
+| `step_ensure_package_layout` | Creates or repairs `src/<package>/__init__.py` |
 | `step_add_dev_deps` | Calls `uv_add_dev(project_dir, DEV_DEPS)` |
 | `step_patch_pyproject` | Appends missing tool sections to `pyproject.toml` |
 | `step_write_makefile` | Renders `Makefile.tmpl` → `Makefile` |
 | `step_write_tests_dir` | Creates `tests/__init__.py` and `tests/conftest.py` |
 | `step_write_work_dir` | Creates `work/.gitkeep` |
-| `step_write_ci` | Renders `ci.yml.tmpl` → `.github/workflows/ci.yml` |
+| `step_write_ci` | Renders GitHub and GitLab CI templates |
 | `step_git_commit` | Calls `git_commit(project_dir, "chore: yggtools init-repo")` |
 
 `step_write_ci` and `step_git_commit` are no-ops when `ctx.no_git is True`.
@@ -237,6 +255,7 @@ class PipelineStep:
 
 STEPS: list[PipelineStep] = [
     PipelineStep("uv init --lib",           step_uv_init),
+    PipelineStep("ensure src package layout", step_ensure_package_layout),
     PipelineStep("add dev dependencies",     step_add_dev_deps),
     PipelineStep("patch pyproject.toml",     step_patch_pyproject),
     PipelineStep("write Makefile",           step_write_makefile),
@@ -296,7 +315,7 @@ app = typer.Typer(name="yggtools")
 
 @app.command("init-repo")
 def init_repo(
-    project_name: str,
+    project_name: str | None = None,
     python: str = "3.12",
     no_git: bool = False,
     dry_run: bool = False,
@@ -310,6 +329,15 @@ def run(
     ci: bool = False,
     path: Path | None = None,
 ) -> None: ...
+
+@app.command("pipeline")
+def pipeline_cmd(path: str | None = None, report_dir: str | None = None) -> None: ...
+
+@app.command("version")
+def version_cmd(path: str | None = None) -> None: ...
+
+@app.command("increase-version")
+def increase_version_cmd(level: int, path: str | None = None) -> None: ...
 ```
 
 All check modules are imported at module level in `cli.py` to populate the
@@ -334,11 +362,32 @@ run()
   ├── resolve project_dir (path or cwd)
   ├── if all_checks:
   │     results = run_all(project_dir)
-  │     if ci: write_report(results, project_dir, work/report.md)
+  │     # --ci is accepted for compatibility; artifacts are always JSON
   │     exit 0 if all passed else 1
   └── else:
         result = run_one(check_name, project_dir)
         exit 0 if passed else 1
+```
+
+---
+
+### `version` flow
+
+```
+version()
+  ├── collect version artifacts from pyproject.toml, src/<package>/__init__.py, uv.lock
+  ├── print Rich table
+  └── exit 1 when a required artifact is missing or versions differ
+```
+
+### `increase-version` flow
+
+```
+increase_version()
+  ├── read [project].version
+  ├── compute SemVer bump from level 1/2/3
+  ├── update pyproject.toml, src/<package>/__init__.py, uv.lock
+  └── run uv lock
 ```
 
 ---
@@ -355,8 +404,8 @@ importlib.resources.files("yggtools.repo_init.templates").joinpath(name)
 | File | Variables |
 |------|-----------|
 | `Makefile.tmpl` | `project_name` |
-| `ci.yml.tmpl` | `python_version` |
-| `conftest.py.tmpl` | (none) |
+| `github_ci.yml.tmpl` | `python_version` |
+| `gitlab_ci.yml.tmpl` | `python_version` |
 
 The `templates/` directory is a Python package (contains `__init__.py`) so
 hatchling includes it in the wheel automatically.
@@ -373,6 +422,7 @@ CLI
       │
       └── run_pipeline(ctx)
            ├── step_uv_init       → uv_init_lib(parent, "my-lib", "3.12")
+           ├── step_ensure_package_layout → src/my_lib/__init__.py + __version__
            ├── step_add_dev_deps  → uv_add_dev(project_dir, DEV_DEPS)
            ├── step_patch_pyproject → read pyproject.toml, append sections
            ├── step_write_makefile  → render Makefile.tmpl → Makefile
@@ -382,20 +432,21 @@ CLI
            └── step_git_commit      → git add -A && git commit
 ```
 
-### 8.2 `yggtools run --all` (from inside a project)
+### 8.2 `yggtools pipeline` (from inside a project)
 
 ```
 CLI
- └── run_all(project_dir)
+ └── run_pipeline(project_dir)
       ├── check_format(project_dir)       → run_uv(["run","ruff","format","--check",...])
       ├── check_ruff(project_dir)         → run_uv(["run","ruff","check",...])
       ├── check_flake8(project_dir)       → run_uv(["run","flake8",...])
-      ├── check_docstrings(project_dir)   → run_uv(["run","flake8","--select=D",...])
+      ├── check_version_consistency(project_dir) → pure Python artifact audit
       ├── check_typecheck(project_dir)    → run_uv(["run","mypy",...])
       ├── check_metrics(project_dir)      → AST analysis (pure Python)
       ├── check_security_code(project_dir)→ run_uv(["run","bandit",...])
       ├── check_security_deps(project_dir)→ run_uv(["run","pip-audit",...])
       └── check_tests(project_dir)        → run_uv(["run","pytest"])
+      └── write_pipeline_artifacts(...)   → work/reports/*.json + *.sha256
 ```
 
 ---
@@ -436,11 +487,12 @@ tests/
 └── unit/
     ├── test_runner.py        # Registry: register, run_one, run_all
     ├── test_checks.py        # All 9 check functions (mocked run_uv)
-    ├── test_report.py        # write_report: content, file creation
+    ├── test_report.py        # legacy report writer
     ├── test_steps.py         # All 8 pipeline steps (mocked uv.py)
     ├── test_pipeline.py      # STEPS non-empty, unique names, execution order
     ├── test_uv.py            # Adapter: check_uv_available, run_uv, git_commit
-    └── test_cli.py           # init-repo and run commands (mocked internals)
+    ├── test_versioning.py    # SemVer and artifact updates
+    └── test_cli.py           # CLI commands (mocked internals where needed)
 ```
 
 ### 10.2 Key testing patterns
@@ -487,7 +539,7 @@ job: quality (matrix: 3.12, 3.13, fail-fast: false)
   ├── uv python install <version>
   ├── uv sync --python <version>
   ├── make ci
-  └── actions/upload-artifact@v4  (work/report.md, if: always)
+  └── actions/upload-artifact@v4  (work/reports/, if: always)
 ```
 
 ### 11.3 Publish workflow
@@ -501,7 +553,8 @@ job: quality (Python 3.12)
 job: publish (needs: quality)
   permissions: id-token: write   ← OIDC for PyPI Trusted Publishing
   environment: pypi
-  ├── uv build --out-dir dist/
+  ├── verify tag matches pyproject.toml version
+  ├── rm -rf dist && uv build --out-dir dist/
   ├── uv run twine check dist/*
   └── pypa/gh-action-pypi-publish@release/v1
 ```

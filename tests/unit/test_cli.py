@@ -689,6 +689,49 @@ class TestIncreaseVersion:
         assert "bad version" in result.output
 
 
+class TestVersionCommand:
+    """Tests for version command."""
+
+    def test_lists_versions_and_exits_0_when_consistent(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: version command lists synchronized artifacts."""
+        _write_version_project(tmp_path, version="1.2.3")
+        result = _runner.invoke(app, ["version", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "pyproject.project.version" in result.output
+        assert "package.__version__" in result.output
+        assert "uv.lock.package.version" in result.output
+        assert "1.2.3" in result.output
+        assert "Version consistent" in result.output
+
+    def test_exits_1_when_versions_differ(self, tmp_path: Path) -> None:
+        """Requirement: version command fails on mismatched artifacts."""
+        _write_version_project(tmp_path, version="1.2.3")
+        (tmp_path / "src" / "my_lib" / "__init__.py").write_text(
+            '__version__ = "1.2.4"\n',
+            encoding="utf-8",
+        )
+        result = _runner.invoke(app, ["version", "--path", str(tmp_path)])
+        assert result.exit_code == 1
+        assert "1.2.3" in result.output
+        assert "1.2.4" in result.output
+        assert "Version mismatch detected" in result.output
+
+    def test_exits_1_when_required_artifact_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: version command fails when a version is missing."""
+        _write_version_project(tmp_path, version="1.2.3")
+        (tmp_path / "uv.lock").unlink()
+        result = _runner.invoke(app, ["version", "--path", str(tmp_path)])
+        assert result.exit_code == 1
+        assert "uv.lock.package.version" in result.output
+        assert "Version mismatch detected" in result.output
+
+
 class TestRun:
     """Tests for the run command."""
 
@@ -990,3 +1033,26 @@ class TestRun:
             if call.args
         )
         assert "plain" in printed
+
+
+def _write_version_project(tmp_path: Path, *, version: str) -> None:
+    """Write a minimal project with synchronized version artifacts.
+
+    Args:
+        tmp_path: Temporary project root.
+        version: Version string to write.
+    """
+    (tmp_path / "src" / "my_lib").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "my-lib"\nversion = "{version}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "my_lib" / "__init__.py").write_text(
+        f'__version__ = "{version}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text(
+        f'[[package]]\nname = "my-lib"\nversion = "{version}"\n'
+        'source = { editable = "." }\n',
+        encoding="utf-8",
+    )

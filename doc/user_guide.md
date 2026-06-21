@@ -1,7 +1,7 @@
 # yggtools — User Guide
 
-**Version:** 1.0.0
-**Date:** 2026-06-20
+**Version:** 1.1.0
+**Date:** 2026-06-21
 
 ---
 
@@ -33,14 +33,15 @@ Key design decisions:
   `PYTHONPATH=src uv run python -m yggtools.cli pipeline`. Quality tooling
   stays inside `yggtools` and is updated by upgrading the tool, not by
   copying files into every project.
-- **`uv init --lib` first.** The scaffolding delegates to `uv init --lib`,
-  which creates the canonical `src/` layout and keeps the project structure
-  in sync with uv conventions.
+- **uv-first project creation.** `init-repo` delegates to `uv init --lib`.
+  `init` can complete projects created with either `uv init` or
+  `uv init --lib`; it repairs the expected `src/<package>/` layout when it
+  is missing.
 - **All Python, no shell.** The quality pipeline is implemented in Python
   (Registry + Strategy pattern), making it testable and type-checked.
 - **Two modes, one pipeline.** `init-repo` is a one-shot convenience wrapper.
-  `init` lets you run the same scaffold on an existing `uv init --lib`
-  project, without requiring `yggtools` to be installed globally beforehand.
+  `init` lets you run the same scaffold on an existing uv project, without
+  requiring `yggtools` to be installed globally beforehand.
 
 `yggtools` is a `uv` tool, so it never pollutes your project's virtual
 environment.
@@ -96,7 +97,7 @@ uv tool uninstall yggtools
 ### Install a specific version
 
 ```bash
-uv tool install yggtools==1.0.0
+uv tool install yggtools==1.1.0
 ```
 
 ---
@@ -114,7 +115,7 @@ make check
 ### Option B — without global installation (recommended for CI or shared teams)
 
 ```bash
-uv init --lib my-lib
+uv init my-lib
 cd my-lib
 uvx yggtools init
 make check
@@ -174,14 +175,15 @@ yggtools init-repo my-lib --dry-run
 | # | Step | What it does |
 |---|------|-------------|
 | 1 | `uv init --lib` | Creates `src/` layout, `.gitignore`, `.python-version` |
-| 2 | add dev deps | `uv add --dev yggtools <quality tools>` |
-| 3 | patch pyproject | Adds `[tool.ruff]`, `[tool.mypy]`, `[tool.yggtools]` sections |
-| 4 | write Makefile | Delegates all targets to `yggtools run` |
-| 5 | write CLAUDE.md | Coding standards for Claude Code |
-| 6 | create `tests/` | `__init__.py` and `conftest.py` |
-| 7 | create `work/` | `.gitkeep` |
-| 8 | write CI | `.github/workflows/ci.yml` (skipped with `--no-git`) |
-| 9 | git commit | Initial commit (skipped with `--no-git`) |
+| 2 | ensure package layout | Creates or repairs `src/<package>/__init__.py` |
+| 3 | add dev deps | `uv add --dev yggtools <quality tools>` |
+| 4 | patch pyproject | Adds `[tool.ruff]`, `[tool.mypy]`, `[tool.yggtools]` sections |
+| 5 | write Makefile | Delegates targets to `python -m yggtools.cli` |
+| 6 | write CLAUDE.md | Coding standards for Claude Code |
+| 7 | create `tests/` | `__init__.py` and `conftest.py` |
+| 8 | create `work/` | `.gitkeep` |
+| 9 | write CI | `.github/workflows/ci.yml` (skipped with `--no-git`) |
+| 10 | git commit | Initial commit (skipped with `--no-git`) |
 
 ---
 
@@ -192,9 +194,10 @@ yggtools init [OPTIONS]
 ```
 
 Complete the yggtools scaffold in the **current directory**. Designed to be
-run after `uv init --lib`. Exits with code 1 if `pyproject.toml` is absent.
+run after `uv init` or `uv init --lib`. Exits with code 1 if
+`pyproject.toml` is absent.
 
-Runs all pipeline steps **except** `uv init --lib` (steps 2–9 above).
+Runs all pipeline steps **except** `uv init --lib` (steps 2–10 above).
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -205,7 +208,7 @@ Runs all pipeline steps **except** `uv init --lib` (steps 2–9 above).
 **Typical usage:**
 
 ```bash
-uv init --lib my-lib
+uv init my-lib
 cd my-lib
 uvx yggtools init           # or: yggtools init (if installed globally)
 make check
@@ -214,6 +217,29 @@ make check
 This flow does not require `yggtools` to be installed before the project
 exists, which avoids the circular dependency of `init-repo` on a global
 install.
+
+If the project was created without `--lib`, `yggtools init` creates
+`src/<package>/__init__.py` and inserts `__version__` using the version from
+`pyproject.toml`.
+
+---
+
+### `yggtools pipeline`
+
+```
+yggtools pipeline [OPTIONS]
+```
+
+Run the full staged quality pipeline and write JSON artifacts with SHA-256
+sidecars under `work/reports/`.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--path PATH` | current directory | Project root to audit |
+| `--report-dir PATH` | `work/reports` | Artifact output directory |
+
+This is the command used by `make check`, `make ci`, GitHub Actions, and
+GitLab CI.
 
 ---
 
@@ -229,22 +255,16 @@ Run quality checks on a project.
 |-------------------|---------|-------------|
 | `CHECK_NAME` | — | Name of a single check to run |
 | `--all` | off | Run all registered checks |
-| `--ci` | off | CI mode: also write `work/report.md` |
+| `--ci` | off | Deprecated no-op; artifacts are always written |
 | `--path PATH` | current directory | Project root to audit |
 
 **Examples:**
 
 ```bash
-# Run all checks on the current project
-yggtools run --all
-
-# CI mode (same checks + markdown report)
-yggtools run --all --ci
-
 # Run a single check
 yggtools run typecheck
 
-# Run all checks on another project
+# Run all registered checks on another project
 yggtools run --all --path ~/projects/my-lib
 ```
 
@@ -255,11 +275,64 @@ yggtools run --all --path ~/projects/my-lib
 | `format` | `ruff format --check` |
 | `ruff` | `ruff check` |
 | `flake8` | `flake8` |
+| `version-consistency` | Package artifact version lint |
 | `typecheck` | `mypy --strict` |
 | `metrics` | Built-in CC and logical-line counter |
 | `security-code` | `bandit -r src` |
 | `security-deps` | `pip-audit` on runtime deps |
 | `tests` | `pytest --cov-fail-under=100` |
+
+---
+
+### `yggtools version`
+
+```
+yggtools version [OPTIONS]
+```
+
+List every managed package version artifact and exit with code `1` if any
+required version is missing or inconsistent.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--path PATH` | current directory | Project root to inspect |
+
+Artifacts currently inspected:
+
+| Artifact | Source |
+|----------|--------|
+| `pyproject.project.version` | `[project].version` in `pyproject.toml` |
+| `package.__version__` | `src/<package>/__init__.py` |
+| `uv.lock.package.version` | Editable local package entry in `uv.lock` |
+
+Example:
+
+```bash
+yggtools version
+```
+
+---
+
+### `yggtools increase-version`
+
+```
+yggtools increase-version LEVEL [OPTIONS]
+```
+
+Increase every managed version artifact using Semantic Versioning.
+
+| Level | Component | Example |
+|-------|-----------|---------|
+| `1` | patch | `1.2.3 → 1.2.4` |
+| `2` | minor | `1.2.3 → 1.3.0` |
+| `3` | major | `1.2.3 → 2.0.0` |
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--path PATH` | current directory | Project root to update |
+
+The command updates `pyproject.toml`, `src/<package>/__init__.py`, and
+`uv.lock`, then runs `uv lock`.
 
 ---
 
@@ -277,7 +350,7 @@ my-lib/
 ├── README.md
 ├── pyproject.toml
 ├── uv.lock
-├── src/
+├── src/                    ← created/repaired by yggtools init if missing
 │   └── my_lib/
 │       ├── __init__.py
 │       └── py.typed
@@ -362,7 +435,7 @@ All targets delegate to `python -m yggtools.cli` or standard `uv` commands.
 Temporary output directory — gitignored except `.gitkeep`:
 
 - `.coverage` — coverage data file
-- `report.md` — last quality report (CI mode only)
+- `reports/` — JSON quality artifacts and SHA-256 sidecars
 - `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/` — tool caches
 
 ---
@@ -375,7 +448,7 @@ Run the full pipeline locally:
 make check
 ```
 
-Run in CI mode (same checks, writes `work/report.md`):
+Run in CI mode (same checks and artifacts):
 
 ```bash
 make ci
@@ -388,11 +461,12 @@ The pipeline runs these checks in order:
 | 1 | format | `ruff format --check` |
 | 2 | ruff | `ruff check` |
 | 3 | flake8 | `flake8` |
-| 4 | metrics | Built-in (CC ≤ 10, logical lines ≤ 900) |
-| 5 | security-code | `bandit -r src` |
-| 6 | security-deps | `pip-audit` |
-| 7 | tests | `pytest --cov-fail-under=100` |
-| 8 | typecheck | `mypy --strict` |
+| 4 | version-consistency | Built-in version artifact audit |
+| 5 | typecheck | `mypy --strict` |
+| 6 | metrics | Built-in (CC ≤ 10, logical lines ≤ 900) |
+| 7 | security-code | `bandit -r src` |
+| 8 | security-deps | `pip-audit` |
+| 9 | tests | `pytest --cov-fail-under=100` |
 
 ### Run a single check
 
@@ -430,9 +504,9 @@ When `init-repo` or `init` runs without `--no-git`, it writes
 
 ### GitHub Actions
 
-Triggered on push and pull-request to `main`/`master`. Runs `make ci` on
-the configured Python version. Uploads `work/report.md` as an artifact
-after every run, even on failure.
+Triggered on push and pull-request. Runs the quality pipeline on the
+configured Python versions. Uploads `work/reports/` as an artifact after
+every run, even on failure.
 
 Push your project to GitHub and CI activates automatically:
 
@@ -465,6 +539,11 @@ For PyPI **Trusted Publishing** (OIDC, no token required), configure your
 publisher on [pypi.org/manage/account/publishing/](https://pypi.org/manage/account/publishing/)
 before the first upload.
 
+The publish workflow performs two release safeguards before upload:
+
+- it verifies that the pushed tag (`vX.Y.Z`) matches `[project].version`;
+- it removes `dist/` before building, so stale wheels cannot be uploaded.
+
 ---
 
 ## 10. Typical day-to-day workflow
@@ -487,7 +566,7 @@ make check
 
 ```bash
 # Create project with uv
-uv init --lib my-lib
+uv init my-lib
 cd my-lib
 
 # Scaffold with uvx (no permanent install needed)
@@ -523,10 +602,13 @@ yggtools increase-version 1  # patch
 # yggtools increase-version 2  # minor
 # yggtools increase-version 3  # major
 
-# 2. Run the full pipeline, including version-consistency
+# 2. Inspect and verify package versions
+yggtools version
+
+# 3. Run the full pipeline, including version-consistency
 make check
 
-# 3. Commit, tag, push — CI runs automatically
+# 4. Commit, tag, push — CI runs automatically
 git add pyproject.toml src/*/__init__.py uv.lock
 git commit -m "chore: release v1.1.0"
 git tag v1.1.0

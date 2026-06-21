@@ -86,12 +86,27 @@ The check is pure Python and does not invoke external commands.  It emits
 structured metadata listing each artifact, path, discovered version, and
 missing artifact names.
 
+### Add `yggtools version`
+
+Add an inspection command:
+
+```bash
+yggtools version
+```
+
+The command lists every managed version artifact with its path and
+discovered version.  It exits with code `1` when a required artifact is
+missing or when versions diverge.  This command is intentionally backed by
+the same artifact discovery logic as `version-consistency`, so release
+checks and human inspection share one source of truth.
+
 ### Release workflow
 
 The intended release flow becomes:
 
 ```bash
 yggtools increase-version 1
+yggtools version
 make check
 uv build
 ```

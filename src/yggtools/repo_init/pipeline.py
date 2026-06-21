@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from yggtools.repo_init.steps import (
     RepoContext,
     step_add_dev_deps,
+    step_ensure_package_layout,
     step_git_commit,
     step_patch_pyproject,
     step_uv_init,
@@ -34,6 +35,7 @@ class PipelineStep:
 
 # Steps shared by both init-repo and init (everything after uv init --lib).
 _COMPLETION_STEPS: list[PipelineStep] = [
+    PipelineStep("ensure src package layout", step_ensure_package_layout),
     PipelineStep("add dev dependencies", step_add_dev_deps),
     PipelineStep("patch pyproject.toml", step_patch_pyproject),
     PipelineStep("write Makefile", step_write_makefile),

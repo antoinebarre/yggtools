@@ -19,6 +19,10 @@ from yggtools.quality.checks import security as security_checks
 from yggtools.quality.checks import tests as tests_checks
 from yggtools.quality.checks import typecheck as typecheck_checks
 from yggtools.quality.checks import version as version_checks
+from yggtools.quality.checks.version import (
+    VersionArtifact,
+    _collect_version_artifacts,
+)
 from yggtools.quality.pipeline import (
     STAGES,
     PipelineReport,
@@ -615,10 +619,11 @@ def init_inplace(
 ) -> None:
     """Complete the yggtools scaffold in the current directory.
 
-    Designed to be run after ``uv init --lib``.  Adds yggtools and quality
-    tools as dev dependencies, patches ``pyproject.toml``, writes a
-    ``Makefile`` and ``CLAUDE.md``, creates ``tests/`` and ``work/``, and
-    generates CI workflows.
+    Designed to be run after ``uv init`` or ``uv init --lib``.  Ensures a
+    ``src/<package>/`` layout exists, adds yggtools and quality tools as
+    dev dependencies, patches ``pyproject.toml``, writes a ``Makefile`` and
+    ``CLAUDE.md``, creates ``tests/`` and ``work/``, and generates CI
+    workflows.
 
     Exits with code 1 if ``pyproject.toml`` is absent in the current
     directory.
@@ -628,7 +633,7 @@ def init_inplace(
     if not (cwd / "pyproject.toml").exists():
         _err_console.print(
             "[bold red]Error:[/bold red] No pyproject.toml found in the "
-            "current directory. Run ``uv init --lib PROJECT_NAME`` first.",
+            "current directory. Run ``uv init PROJECT_NAME`` first.",
         )
         raise typer.Exit(1)
 
@@ -705,7 +710,69 @@ def increase_version_cmd(
     _console.print("  [green]✓[/green] uv lock")
 
 
+# ── version command ──────────────────────────────────────────────────────
+
+
+@app.command("version")
+def version_cmd(
+    path: Annotated[
+        str | None,
+        typer.Option("--path", help="Project directory (default: cwd)."),
+    ] = None,
+) -> None:
+    """List package versions found in managed artifacts."""
+    project_dir = Path(path) if path else Path.cwd()
+    artifacts = _collect_version_artifacts(project_dir)
+    missing = [a for a in artifacts if a.required and a.version is None]
+    versions = {a.version for a in artifacts if a.version is not None}
+    passed = not missing and len(versions) <= 1
+
+    _print_version_artifacts_table(artifacts, project_dir)
+    if passed:
+        version = next(iter(versions), "unknown")
+        _console.print(
+            f"\n[bold green]Version consistent:[/bold green] {version}"
+        )
+        return
+
+    _console.print("\n[bold red]Version mismatch detected.[/bold red]")
+    raise typer.Exit(1)
+
+
 # ── helpers ──────────────────────────────────────────────────────────────
+
+
+def _print_version_artifacts_table(
+    artifacts: list[VersionArtifact],
+    project_dir: Path,
+) -> None:
+    """Print a table of discovered package version artifacts.
+
+    Args:
+        artifacts: Version artifacts to display.
+        project_dir: Project root directory.
+    """
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        show_lines=False,
+    )
+    table.add_column("Artifact", style="bold")
+    table.add_column("Path")
+    table.add_column("Version", justify="right")
+    table.add_column("Required", justify="center")
+
+    for artifact in artifacts:
+        version = artifact.version if artifact.version is not None else "-"
+        required = "yes" if artifact.required else "no"
+        table.add_row(
+            artifact.name,
+            _relative_to_project(artifact.path, project_dir),
+            version,
+            required,
+        )
+
+    _console.print(Panel(table, title="[bold]Package versions[/bold]"))
 
 
 def _run_requested_checks(
@@ -984,6 +1051,7 @@ def _print_dry_run_plan(
             f"uv init --lib {ctx.project_name} --python {ctx.python_version}",
         )
     actions += [
+        "ensure src/<package>/__init__.py with __version__",
         "uv add --dev yggtools + quality tools",
         "patch pyproject.toml ([tool.ruff], [tool.mypy], …)",
         "write Makefile",
