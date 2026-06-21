@@ -29,6 +29,7 @@ STAGES: tuple[Stage, ...] = (
     Stage("Linters", ("format", "ruff", "flake8", "version-consistency")),
     Stage("Type checking", ("typecheck",)),
     Stage("Metrics", ("metrics",)),
+    Stage("Warnings", ("lint-suppressions", "todos")),
     Stage("Security", ("security-code", "security-deps")),
     Stage("Tests & coverage", ("tests",)),
 )
@@ -143,7 +144,7 @@ def _check_payload(
     return {
         "schema": "yggtools.ci.check.v1",
         "check": result.name,
-        "status": "pass" if result.passed else "fail",
+        "status": _result_status(result),
         "passed": result.passed,
         "detail": result.detail,
         "duration_seconds": result.duration_seconds,
@@ -184,7 +185,7 @@ def _summary_payload(
         "project": project_dir.name,
         "checks": {
             r.name: {
-                "status": "pass" if r.passed else "fail",
+                "status": _result_status(r),
                 "detail": r.detail,
                 "duration_seconds": r.duration_seconds,
             }
@@ -220,6 +221,22 @@ def _write_json(payload: dict[str, object], path: Path) -> str:
         encoding="utf-8",
     )
     return digest
+
+
+def _result_status(result: CheckResult) -> str:
+    """Return the JSON status for a check result.
+
+    Args:
+        result: Single check result.
+
+    Returns:
+        ``warning`` for non-blocking warning results, otherwise pass or fail.
+    """
+    if result.passed and result.metadata.get("severity") == "warning":
+        count = result.metadata.get("warning_count", 0)
+        if isinstance(count, int) and count > 0:
+            return "warning"
+    return "pass" if result.passed else "fail"
 
 
 def _relative(path: Path, project_dir: Path) -> str:

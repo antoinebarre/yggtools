@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shutil
-import subprocess  # nosec B404
+import subprocess  # nosec B404 - this module is the subprocess boundary.
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -98,6 +98,9 @@ def run_uv(
     Raises:
         CommandError: If ``check`` is True and the command fails.
     """
+    # yggtools intentionally delegates execution to the user-selected uv
+    # binary on PATH. Arguments are passed as a list and shell=True is never
+    # used, keeping command construction explicit and auditable.
     proc = subprocess.run(  # noqa: S603  # nosec B603 B607
         ["uv", *args],  # noqa: S607
         cwd=cwd,
@@ -173,6 +176,9 @@ def git_commit(project_dir: Path, message: str) -> None:
     Raises:
         CommandError: If ``git commit`` exits with a non-zero status.
     """
+    # git is a fixed executable name resolved from PATH in the target
+    # developer environment. Arguments are static except for the commit
+    # message, and shell=True is never used.
     subprocess.run(  # nosec B603 B607
         ["git", "add", "-A"],  # noqa: S607
         cwd=project_dir,

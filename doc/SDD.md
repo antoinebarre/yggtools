@@ -58,11 +58,17 @@
 ```
 src/yggtools/
 ├── __init__.py
-├── cli.py                    # Typer app: init, pipeline, run, version
+├── cli.py                    # Thin Typer composition entry point
+├── cli_support.py            # Shared CLI path and text helpers
 ├── uv.py                     # Adapter: uv and git subprocess calls
+├── version_commands.py       # Typer commands: version, increase-version
+├── version_display.py        # Rich rendering for version commands
 ├── versioning.py             # SemVer bumping across package artifacts
 ├── quality/
 │   ├── __init__.py
+│   ├── commands.py           # Typer commands: pipeline, run
+│   ├── display.py            # Rich rendering for quality command output
+│   ├── objectives.py         # Quality objective row calculation
 │   ├── pipeline.py           # Staged orchestration + JSON artifacts
 │   ├── runner.py             # Registry, CheckFn protocol, run_all / run_one
 │   ├── report.py             # Legacy Markdown report helper
@@ -77,6 +83,8 @@ src/yggtools/
 │       └── version.py        # @register("version-consistency")
 └── repo_init/
     ├── __init__.py
+    ├── commands.py           # Typer commands: init-repo, init, reset
+    ├── display.py            # Dry-run and progress rendering
     ├── pipeline.py           # STEPS list + run_pipeline()
     ├── steps.py              # RepoContext, StepError, one function per step
     └── templates/            # Jinja2 templates (package resource)
@@ -118,8 +126,8 @@ stores the function under `name` and returns it unchanged.
 `_REGISTRY.values()` in insertion order.
 
 The registry is populated at import time when the check modules are imported.
-`cli.py` imports all check modules at top level so the registry is fully
-populated before any command runs.
+`quality.commands` imports all check modules at top level so the registry is
+fully populated before any quality command runs.
 
 ### 3.2 `quality/checks/`
 
@@ -147,6 +155,8 @@ Every check:
 | `version.py` | `version-consistency` | Version artifact consistency |
 | `typecheck.py` | `typecheck` | `mypy src tests` |
 | `metrics.py` | `metrics` | Pure Python AST analysis |
+| `warnings.py` | `lint-suppressions` | Pure Python lint suppression scan |
+| `warnings.py` | `todos` | Pure Python package TODO scan |
 | `security.py` | `security-code` | `bandit -r src` |
 | `security.py` | `security-deps` | `pip-audit` on `uv export --no-dev` |
 | `tests.py` | `tests` | `pytest` |
@@ -177,7 +187,22 @@ Configuration defaults (read from `[tool.yggtools.code_metrics]`):
 | `max_cyclomatic_complexity` | `10` |
 | `max_module_logical_lines` | `900` |
 
-### 3.4 `quality/pipeline.py`
+### 3.4 `quality/checks/warnings.py`
+
+`warnings.py` does not call external tools. It scans `src/yggtools/**/*.py`
+and returns passing `CheckResult` objects with warning metadata:
+
+- `lint-suppressions` lists suppression markers such as `noqa`,
+  `type: ignore`, `pragma: no cover`, `nosec`, `pylint: disable`,
+  `ruff: noqa`, and formatter-off markers.
+- `todos` lists package comments starting with `TODO`, `FIXME`, or `XXX`.
+
+These checks are non-blocking: `passed=True`, `metadata.severity="warning"`,
+and `metadata.warning_count` carries the finding count. The CLI renders these
+results as `WARN` when the count is non-zero, and the JSON check artifact uses
+`status="warning"` while preserving `passed=true`.
+
+### 3.5 `quality/pipeline.py`
 
 ```python
 @dataclass(frozen=True)
@@ -192,7 +217,7 @@ def write_pipeline_artifacts(result, project_dir, output_dir) -> PipelineReport:
 The pipeline runs staged checks in deterministic order and writes one JSON
 artifact per check plus `pipeline.json`, each with a `.sha256` sidecar.
 
-### 3.5 `quality/report.py`
+### 3.6 `quality/report.py`
 
 ```python
 def write_report(
@@ -308,49 +333,36 @@ both with `check=True`.
 
 ---
 
-## 6. CLI: `cli.py`
+## 6. CLI composition and command modules
 
 ```python
 app = typer.Typer(name="yggtools")
 
-@app.command("init-repo")
-def init_repo(
-    project_name: str | None = None,
-    python: str = "3.12",
-    no_git: bool = False,
-    dry_run: bool = False,
-    parent_dir: Path | None = None,
-) -> None: ...
-
-@app.command("run")
-def run(
-    check_name: str | None = None,
-    all_checks: bool = False,
-    ci: bool = False,
-    path: Path | None = None,
-) -> None: ...
-
-@app.command("pipeline")
-def pipeline_cmd(path: str | None = None, report_dir: str | None = None) -> None: ...
-
-@app.command("version")
-def version_cmd(path: str | None = None) -> None: ...
-
-@app.command("increase-version")
-def increase_version_cmd(level: int, path: str | None = None) -> None: ...
+register_quality_commands(app)
+register_repo_init_commands(app)
+register_version_commands(app)
 ```
 
-All check modules are imported at module level in `cli.py` to populate the
-registry before any command is dispatched.
+`cli.py` owns only the package entry point and command composition. Business
+commands live beside their owning domain:
+
+| Module | Commands | Responsibility |
+| --- | --- | --- |
+| `quality.commands` | `pipeline`, `run` | Quality check orchestration and JSON artifact writing |
+| `repo_init.commands` | `init-repo`, `init`, `reset` | Repository scaffold and generated-file reset workflows |
+| `version_commands` | `version`, `increase-version` | Version inspection and SemVer bump entry points |
+
+All check modules are imported at module level in `quality.commands` to
+populate the registry before any quality command is dispatched.
 
 ### `init-repo` flow
 
 ```
 init_repo()
   ├── build RepoContext
-  ├── if dry_run → _print_dry_run_plan(ctx) and return
+  ├── if dry_run → display.print_dry_run_plan(ctx) and return
   ├── check_uv_available()        → exit 1 on UvNotFoundError
-  ├── _run_with_progress(ctx)     → exit 1 on StepError or Exception
+  ├── run_with_progress(ctx)      → exit 1 on StepError or Exception
   └── print success message
 ```
 
@@ -360,13 +372,10 @@ init_repo()
 run()
   ├── if not (check_name or all_checks) → exit 1 with usage error
   ├── resolve project_dir (path or cwd)
-  ├── if all_checks:
-  │     results = run_all(project_dir)
-  │     # --ci is accepted for compatibility; artifacts are always JSON
-  │     exit 0 if all passed else 1
-  └── else:
-        result = run_one(check_name, project_dir)
-        exit 0 if passed else 1
+  ├── run one check or all registered checks
+  ├── write one JSON artifact per result
+  ├── print compact summary
+  └── exit 0 if all passed else 1
 ```
 
 ---

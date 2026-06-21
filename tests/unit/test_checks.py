@@ -44,6 +44,15 @@ from yggtools.quality.checks.version import (
 from yggtools.quality.checks.version import (
     _relative_to as _relative_version_path,
 )
+from yggtools.quality.checks.warnings import (
+    _relative_to as _relative_warning_path,
+)
+from yggtools.quality.checks.warnings import (
+    check_lint_suppressions,
+    check_todos,
+    collect_lint_suppressions,
+    collect_todos,
+)
 from yggtools.quality.runner import CheckResult
 from yggtools.uv import RunResult
 
@@ -226,6 +235,80 @@ class TestCheckFlake8:
         findings = result.metadata["findings"]
         assert isinstance(findings, list)
         assert len(findings) == 2
+
+
+# ── warning audits ───────────────────────────────────────────────────────
+
+
+class TestWarningAudits:
+    """Tests for non-blocking warning audit checks."""
+
+    def test_collects_lint_suppressions(self, tmp_path: Path) -> None:
+        """Requirement: lint suppressions must be listed as warnings."""
+        package = tmp_path / "src" / "yggtools"
+        package.mkdir(parents=True)
+        (package / "sample.py").write_text(
+            "value = 1  # noqa: E501\nother = 2  # type: ignore[arg-type]\n",
+            encoding="utf-8",
+        )
+        findings = collect_lint_suppressions(tmp_path)
+        assert len(findings) == 2
+        assert findings[0]["marker"] == "noqa"
+        assert findings[1]["marker"] == "type-ignore"
+
+    def test_missing_package_has_no_suppressions(self, tmp_path: Path) -> None:
+        """Requirement: missing packages must yield no suppressions."""
+        assert collect_lint_suppressions(tmp_path) == []
+
+    def test_lint_suppression_check_is_non_blocking(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: lint suppression warnings must not fail checks."""
+        package = tmp_path / "src" / "yggtools"
+        package.mkdir(parents=True)
+        (package / "sample.py").write_text(
+            "value = 1  # noqa\n",
+            encoding="utf-8",
+        )
+        result = check_lint_suppressions(tmp_path)
+        assert result.passed
+        assert result.metadata["severity"] == "warning"
+        assert result.metadata["warning_count"] == 1
+
+    def test_collects_package_todos(self, tmp_path: Path) -> None:
+        """Requirement: package TODO markers must be listed as warnings."""
+        package = tmp_path / "src" / "yggtools"
+        package.mkdir(parents=True)
+        (package / "sample.py").write_text(
+            "# TODO(@antoinebarre): finish it.\n",
+            encoding="utf-8",
+        )
+        findings = collect_todos(tmp_path)
+        assert len(findings) == 1
+        assert findings[0]["marker"] == "todo"
+        assert "finish it" in str(findings[0]["text"])
+
+    def test_warning_relative_path_allows_external_paths(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: external warning paths must remain absolute."""
+        external = Path("/outside/a.py")
+        assert _relative_warning_path(external, tmp_path) == str(external)
+
+    def test_todo_check_is_non_blocking(self, tmp_path: Path) -> None:
+        """Requirement: TODO warnings must not fail checks."""
+        package = tmp_path / "src" / "yggtools"
+        package.mkdir(parents=True)
+        (package / "sample.py").write_text(
+            "# FIXME: later\n",
+            encoding="utf-8",
+        )
+        result = check_todos(tmp_path)
+        assert result.passed
+        assert result.metadata["severity"] == "warning"
+        assert result.metadata["warning_count"] == 1
 
 
 # ── version consistency ─────────────────────────────────────────────────

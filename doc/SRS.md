@@ -97,6 +97,7 @@ Developer
 | F-07 | Generate GitHub Actions CI workflow |
 | F-08 | Inspect package version artifacts |
 | F-09 | Increase package version artifacts with SemVer levels |
+| F-10 | Report non-blocking TODO and lint-suppression warnings |
 
 ### 2.3 User profile
 
@@ -213,6 +214,12 @@ sidecars under `work/reports/`, plus a consolidated `pipeline.json`.
 
 `yggtools pipeline` SHALL exit with code `0` when every check passes, and
 code `1` otherwise.
+
+#### REQ-PIPE-04
+
+`yggtools pipeline` SHALL report TODO-like package markers and lint
+suppression markers as non-blocking warnings in both console output and JSON
+artifacts.
 
 ### 3.3 `yggtools run`
 
