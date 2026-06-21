@@ -1,6 +1,7 @@
-# Claude Code Instructions
+# AI Agent Instructions
 
-These instructions apply to the whole repository.
+These instructions apply to all AI coding agents (ChatGPT, GitHub Copilot,
+and other LLM-based tools) working on this repository.
 
 ## Coding Standards
 

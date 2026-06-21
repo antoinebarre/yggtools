@@ -17,6 +17,7 @@ from yggtools.repo_init.steps import (
     step_git_commit,
     step_patch_pyproject,
     step_uv_init,
+    step_write_agents_md,
     step_write_ci,
     step_write_claude_md,
     step_write_makefile,
@@ -431,6 +432,32 @@ class TestStepWriteClaudeMd:
         ctx.project_dir.mkdir(parents=True)
         step_write_claude_md(ctx)
         assert not (ctx.project_dir / "CLAUDE.md").exists()
+
+
+class TestStepWriteAgentsMd:
+    """Tests for step_write_agents_md."""
+
+    def test_writes_agents_md(self, tmp_path: Path) -> None:
+        """Requirement: step_write_agents_md must create AGENTS.md."""
+        ctx = _ctx(tmp_path)
+        ctx.project_dir.mkdir(parents=True)
+        step_write_agents_md(ctx)
+        assert (ctx.project_dir / "AGENTS.md").exists()
+
+    def test_agents_md_contains_package_name(self, tmp_path: Path) -> None:
+        """Requirement: AGENTS.md must reference the package source path."""
+        ctx = _ctx(tmp_path)
+        ctx.project_dir.mkdir(parents=True)
+        step_write_agents_md(ctx)
+        content = (ctx.project_dir / "AGENTS.md").read_text()
+        assert "my_lib" in content
+
+    def test_skips_in_dry_run(self, tmp_path: Path) -> None:
+        """Requirement: step_write_agents_md must not write in dry-run mode."""
+        ctx = _ctx(tmp_path, dry_run=True)
+        ctx.project_dir.mkdir(parents=True)
+        step_write_agents_md(ctx)
+        assert not (ctx.project_dir / "AGENTS.md").exists()
 
 
 class TestStepGitCommit:
