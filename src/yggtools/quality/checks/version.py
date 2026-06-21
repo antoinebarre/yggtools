@@ -155,7 +155,7 @@ def _read_lock_version(path: Path, project_name: str) -> str | None:
         project_name: Project name from pyproject.toml.
 
     Returns:
-        Version string when a matching editable package is found.
+        Version string when a package matching the current project is found.
     """
     if not path.exists() or not project_name:
         return None
@@ -168,10 +168,8 @@ def _read_lock_version(path: Path, project_name: str) -> str | None:
             continue
         if package.get("name") != project_name:
             continue
-        source = package.get("source", {})
-        if isinstance(source, dict) and source.get("editable") == ".":
-            version = package.get("version")
-            return str(version) if isinstance(version, str) else None
+        version = package.get("version")
+        return str(version) if isinstance(version, str) else None
     return None
 
 

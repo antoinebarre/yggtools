@@ -266,8 +266,9 @@ number of violations.
 #### REQ-CHECK-04 — Version consistency
 
 The `version-consistency` check SHALL compare `[project].version`,
-`src/<package>/__init__.py::__version__`, and the editable local package
-entry in `uv.lock`.
+`src/<package>/__init__.py::__version__`, and the `uv.lock` package entry
+whose `name` matches `[project].name`. Versions from dependencies, including
+the installed `yggtools` dependency, SHALL NOT affect the result.
 
 #### REQ-CHECK-05 — Type check
 

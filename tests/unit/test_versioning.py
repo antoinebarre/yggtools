@@ -10,7 +10,7 @@ import pytest
 from yggtools.uv import CommandError
 from yggtools.versioning import (
     VersionError,
-    _is_editable_project_block,
+    _is_project_block,
     _line_ending,
     _package_blocks,
     _replace_init_version,
@@ -112,20 +112,19 @@ class TestReplaceInitVersion:
 class TestReplaceLockVersion:
     """Tests for uv.lock version replacement."""
 
-    def test_replaces_editable_project_version(self) -> None:
-        """Requirement: editable local package version is updated."""
+    def test_replaces_project_lock_version(self) -> None:
+        """Requirement: current project package version is updated."""
         content = (
             '[[package]]\nname = "other"\nversion = "9.9.9"\n\n'
             '[[package]]\nname = "my-lib"\nversion = "1.2.3"\n'
-            'source = { editable = "." }\n'
         )
         updated = _replace_lock_version(content, "my-lib", "1.2.4")
         assert 'name = "my-lib"\nversion = "1.2.4"' in updated
         assert 'name = "other"\nversion = "9.9.9"' in updated
 
-    def test_fails_when_editable_project_missing(self) -> None:
-        """Requirement: missing editable package block fails."""
-        content = '[[package]]\nname = "my-lib"\nversion = "1.2.3"\n'
+    def test_fails_when_project_package_missing(self) -> None:
+        """Requirement: missing project package block fails."""
+        content = '[[package]]\nname = "other"\nversion = "1.2.3"\n'
         with pytest.raises(VersionError):
             _replace_lock_version(content, "my-lib", "1.2.4")
 
@@ -134,15 +133,14 @@ class TestReplaceLockVersion:
         lines = ["version = 1\n", "[[package]]\n", 'name = "a"\n']
         assert _package_blocks(lines) == [(1, 3)]
 
-    def test_editable_project_block_requires_name_and_source(self) -> None:
-        """Requirement: block must match name and editable source."""
+    def test_project_block_requires_matching_name(self) -> None:
+        """Requirement: block must match the project package name."""
         block = [
             "[[package]]\n",
             'name = "my-lib"\n',
-            'source = { editable = "." }\n',
         ]
-        assert _is_editable_project_block(block, "my-lib")
-        assert not _is_editable_project_block(block, "other")
+        assert _is_project_block(block, "my-lib")
+        assert not _is_project_block(block, "other")
 
     def test_replace_version_line_ignores_other_lines(self) -> None:
         """Requirement: only version assignments are replaceable."""

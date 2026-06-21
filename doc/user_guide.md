@@ -303,7 +303,11 @@ Artifacts currently inspected:
 |----------|--------|
 | `pyproject.project.version` | `[project].version` in `pyproject.toml` |
 | `package.__version__` | `src/<package>/__init__.py` |
-| `uv.lock.package.version` | Editable local package entry in `uv.lock` |
+| `uv.lock.package.version` | Package entry in `uv.lock` whose `name` matches `[project].name` |
+
+Dependency versions in `uv.lock` are ignored. For example, running
+`yggtools version` inside `my-lib` checks the `my-lib` lock entry, not the
+installed `yggtools` dependency version.
 
 Example:
 

@@ -36,9 +36,6 @@ _INIT_VERSION_PATTERN = re.compile(
 )
 _PACKAGE_HEADER_PATTERN = re.compile(r"^\s*\[\[package\]\]\s*$")
 _NAME_LINE_PATTERN = re.compile(r"^\s*name\s*=\s*[\"'](?P<name>[^\"']+)[\"']")
-_EDITABLE_SOURCE_PATTERN = re.compile(
-    r"^\s*source\s*=\s*\{[^}]*editable\s*=\s*[\"']\.[\"'][^}]*\}",
-)
 _PATCH_LEVEL = 1
 _MINOR_LEVEL = 2
 _MAJOR_LEVEL = 3
@@ -247,7 +244,7 @@ def _replace_lock_version(
     project_name: str,
     new_version: str,
 ) -> str:
-    """Replace editable local package version in uv.lock content.
+    """Replace the current project package version in uv.lock content.
 
     Args:
         content: Original uv.lock content.
@@ -258,13 +255,13 @@ def _replace_lock_version(
         Updated content.
 
     Raises:
-        VersionError: If no editable package block matches.
+        VersionError: If no package block matches.
     """
     lines = content.splitlines(keepends=True)
     blocks = _package_blocks(lines)
     for start, end in blocks:
         block = lines[start:end]
-        if not _is_editable_project_block(block, project_name):
+        if not _is_project_block(block, project_name):
             continue
         for offset, line in enumerate(block):
             bare_line = line.rstrip("\r\n")
@@ -272,7 +269,7 @@ def _replace_lock_version(
             if updated is not None:
                 lines[start + offset] = updated + _line_ending(line)
                 return "".join(lines)
-    msg = f"Could not find editable package {project_name!r} in uv.lock."
+    msg = f"Could not find package {project_name!r} in uv.lock."
     raise VersionError(msg)
 
 
@@ -315,26 +312,22 @@ def _package_blocks(lines: list[str]) -> list[tuple[int, int]]:
     ]
 
 
-def _is_editable_project_block(block: list[str], project_name: str) -> bool:
-    """Return whether a uv.lock package block is the local project.
+def _is_project_block(block: list[str], project_name: str) -> bool:
+    """Return whether a uv.lock package block matches the current project.
 
     Args:
         block: Lines from one ``[[package]]`` block.
         project_name: Expected package name.
 
     Returns:
-        True when name and editable source match.
+        True when the package name matches.
     """
-    found_name = False
-    found_editable = False
     for line in block:
         bare_line = line.rstrip("\r\n")
         name_match = _NAME_LINE_PATTERN.match(bare_line)
         if name_match is not None and name_match.group("name") == project_name:
-            found_name = True
-        if _EDITABLE_SOURCE_PATTERN.match(bare_line):
-            found_editable = True
-    return found_name and found_editable
+            return True
+    return False
 
 
 def _line_ending(line: str) -> str:

@@ -287,8 +287,8 @@ class TestVersionConsistency:
         init_file.write_text('NAME = "my-lib"\n', encoding="utf-8")
         assert _read_init_version(init_file) is None
 
-    def test_reads_editable_lock_version(self, tmp_path: Path) -> None:
-        """Requirement: uv.lock editable package version is extracted."""
+    def test_reads_lock_version_by_project_name(self, tmp_path: Path) -> None:
+        """Requirement: uv.lock project package version is extracted."""
         lock_file = tmp_path / "uv.lock"
         lock_file.write_text(
             '[[package]]\nname = "my-lib"\nversion = "1.2.3"\n'
@@ -340,17 +340,30 @@ class TestVersionConsistency:
         )
         assert _read_lock_version(lock_file, "my-lib") is None
 
-    def test_lock_package_without_editable_source_returns_none(
+    def test_lock_lookup_ignores_yggtools_dependency_version(
         self,
         tmp_path: Path,
     ) -> None:
-        """Requirement: only editable local package version is used."""
+        """Requirement: dependency versions do not affect project version."""
+        lock_file = tmp_path / "uv.lock"
+        lock_file.write_text(
+            '[[package]]\nname = "my-lib"\nversion = "0.3.0"\n\n'
+            '[[package]]\nname = "yggtools"\nversion = "1.1.0"\n',
+            encoding="utf-8",
+        )
+        assert _read_lock_version(lock_file, "my-lib") == "0.3.0"
+
+    def test_lock_package_without_editable_source_is_used(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: package name identifies the current project."""
         lock_file = tmp_path / "uv.lock"
         lock_file.write_text(
             '[[package]]\nname = "my-lib"\nversion = "1.2.3"\n',
             encoding="utf-8",
         )
-        assert _read_lock_version(lock_file, "my-lib") is None
+        assert _read_lock_version(lock_file, "my-lib") == "1.2.3"
 
     def test_non_string_lock_version_returns_none(
         self,
@@ -390,6 +403,21 @@ class TestVersionConsistency:
         result = check_version_consistency(tmp_path)
         assert result.passed
         assert "1.2.3" in result.detail
+
+    def test_passes_when_dependency_versions_differ(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: dependency package versions are ignored."""
+        _write_version_project(tmp_path, version="0.3.0")
+        (tmp_path / "uv.lock").write_text(
+            '[[package]]\nname = "my-lib"\nversion = "0.3.0"\n\n'
+            '[[package]]\nname = "yggtools"\nversion = "1.1.0"\n',
+            encoding="utf-8",
+        )
+        result = check_version_consistency(tmp_path)
+        assert result.passed
+        assert result.metadata["versions"] == ["0.3.0"]
 
     def test_fails_when_versions_differ(self, tmp_path: Path) -> None:
         """Requirement: check fails on conflicting artifact versions."""

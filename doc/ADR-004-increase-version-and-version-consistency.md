@@ -15,7 +15,8 @@ synchronized:
    `[project].version`.
 2. `src/<package>/__init__.py` — runtime package metadata:
    `__version__`.
-3. `uv.lock` — locked editable package version for the local project.
+3. `uv.lock` — locked package version for the current project entry,
+   identified by `[project].name`.
 
 Updating these files manually is error-prone.  A release can be built with one
 version in `pyproject.toml`, imported with another version at runtime, and
@@ -80,7 +81,11 @@ The check reads all managed version artifacts and fails when:
 
 - a required version artifact is missing;
 - two artifacts contain different versions;
-- the lockfile has no editable package entry matching `[project].name`.
+- the lockfile has no package entry matching `[project].name`.
+
+The check intentionally ignores dependency versions in `uv.lock`, including an
+installed `yggtools` dependency when the command is executed inside another
+package.
 
 The check is pure Python and does not invoke external commands.  It emits
 structured metadata listing each artifact, path, discovered version, and
