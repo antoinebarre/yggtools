@@ -459,6 +459,22 @@ def step_write_claude_md(ctx: RepoContext) -> None:
     (ctx.project_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
 
 
+def step_write_agents_md(ctx: RepoContext) -> None:
+    """Render and write AGENTS.md into the project directory.
+
+    AGENTS.md contains the coding standards and AI agent instructions
+    for non-Claude tools such as ChatGPT and GitHub Copilot.
+
+    Args:
+        ctx: Pipeline context.
+    """
+    if ctx.dry_run:
+        return
+    package_name = _package_name(ctx.project_name)
+    content = _render_template("AGENTS.md.tmpl", package_name=package_name)
+    (ctx.project_dir / "AGENTS.md").write_text(content, encoding="utf-8")
+
+
 def _render_template(name: str, **variables: str) -> str:
     """Load and render a Jinja2 template from the repo_init/templates package.
 

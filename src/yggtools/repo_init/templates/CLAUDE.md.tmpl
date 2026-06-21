@@ -82,3 +82,114 @@ make check
 ```
 
 Use `make ci` for non-mutating verification.
+
+---
+
+## Mode Architecte
+
+Activate this mode by saying: "mode architecte".
+
+### Posture
+
+- **Challenge first.** Before accepting any feature request, ask: Is this
+  feature necessary? What problem does it solve? Can an existing mechanism
+  handle it? If the request is vague, ask one targeted clarifying question
+  before doing anything else.
+- **Incremental ADRs.** Propose one focused ADR per decision. Never bundle
+  unrelated decisions in one document.
+- **Simplicity over cleverness.** Prefer fewer abstractions. A flat list of
+  steps beats a plugin framework when there are three plugins.
+- **Injection over inheritance.** Pass dependencies explicitly. Never use
+  base-class coupling or hidden global state.
+- **Design patterns deliberately.** Use Strategy when behavior varies by
+  policy. Use Registry when behavior must be extended without editing the
+  engine. Use Adapter to isolate I/O. Use Pipeline for ordered, independently
+  testable steps. Do not introduce a pattern for decoration.
+
+### Deliverables
+
+When asked to design a feature, produce documents in this order:
+
+1. **SRS fragment** — list only the requirements that are new or changed. Use
+   `REQ-<CATEGORY>-<NN>` identifiers. Each requirement gets one sentence with
+   SHALL / SHOULD / MAY. Include acceptance criteria.
+2. **ADR** — one decision, one document. Sections: Context, Decision,
+   Consequences, Alternatives rejected. Store in `doc/ADR-NNN-slug.md`.
+3. **SDD section** — update the relevant section of `doc/SDD.md` to reflect
+   the design. Include: affected modules, public interfaces changed, data
+   flow, error handling, test strategy.
+
+### Constraints
+
+- SOLID principles strictly applied.
+- Each module, class, and function has one clear reason to change.
+- High-level workflows depend on stable interfaces, not concrete low-level
+  details.
+- No module exceeds 500 lines unless an ADR explicitly justifies it.
+- No function has cyclomatic complexity above 10.
+- Public interfaces are small and named with business/domain vocabulary.
+- No global mutable state.
+
+---
+
+## Mode Codeur
+
+Activate this mode by saying: "mode codeur".
+
+### Posture
+
+- **Clarity over cleverness.** Write code a junior can read without
+  explanation.
+- **PEP-compliant always.** Follow PEP 8, PEP 257 (Google style), PEP 484,
+  PEP 526. Run `make check` before declaring done.
+- **100% check coverage.** Every code change must leave `make check` passing.
+  Fix ruff, flake8, mypy, bandit, and pytest failures before closing the task.
+- **Defensive programming at boundaries only.** Validate at entry points (CLI
+  args, external API responses, file I/O). Trust internal code and framework
+  guarantees. Do not add redundant guards inside a function that already
+  received a validated value.
+- **Exceptions with intent.** Raise only when the caller genuinely cannot
+  continue. Name exceptions with domain vocabulary. Never use bare `except:`.
+  Never swallow exceptions silently.
+- **Prefer stdlib, then well-known packages.** Use `pathlib`, `dataclasses`,
+  `typing`, `importlib.resources`. Do not add a dependency that the stdlib can
+  handle.
+- **Injection over inheritance.** Pass dependencies as arguments. Avoid global
+  state.
+
+### Coding Standards (Codeur)
+
+- Google-style docstrings on every function, method, class — including private
+  ones.
+- Function docstrings: summary + `Args:` + `Returns:` + `Raises:`.
+- Class docstrings: summary + `Attributes:` when public attributes exist.
+- Test docstrings use `Requirement:` prefix to state what is being verified.
+- Names use business/domain vocabulary.
+- Cyclomatic complexity <= 10 per function.
+- Module size <= 500 lines (justified by ADR if exceeded).
+
+### Testing Strategy
+
+For every code change, write:
+
+1. **Unit tests** — mock all I/O and subprocess calls. Test one function in
+   isolation. Cover the pass path, the fail path, and each `Raises:` clause.
+2. **Integration / end-to-end tests** — at least one test that exercises the
+   full workflow without mocking internal modules (only external calls like
+   `subprocess`).
+
+Test naming: `test_<what>_<condition>`.
+
+### Quality Gate
+
+Before reporting done, run:
+
+```bash
+make check
+```
+
+When fixing linter/type errors:
+- `ruff` errors — fix the code, not `# noqa`.
+- `mypy` errors — add proper type annotations; never use `# type: ignore`.
+- `bandit` B404/B603/B607 on subprocess — use `# nosec BXXX` on the offending
+  line.
