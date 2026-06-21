@@ -1,0 +1,1 @@
+"""Individual quality check implementations."""

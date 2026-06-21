@@ -1,1044 +1,520 @@
 # SDD — Software Design Document
 
-**Projet :** yggtools  
-**Version :** 1.3  
-**Date :** 2026-06-13  
-**Auteur :** Antoine Barré  
-**Statut :** Draft
+**Project:** yggtools
+**Version:** 2.0
+**Date:** 2026-06-15
+**Author:** Antoine Barré
+**Status:** Approved
 
 ---
 
-## Table des matières
+## Table of contents
 
-1. [Contexte et objectifs de conception](#1-contexte-et-objectifs-de-conception)
-2. [Architecture générale](#2-architecture-générale)
-3. [Modules Python](#3-modules-python)
-4. [Templates et ressources embarquées](#4-templates-et-ressources-embarquées)
-5. [Scripts embarqués — conception détaillée](#5-scripts-embarqués--conception-détaillée)
-6. [Interface CLI](#6-interface-cli)
-7. [Flux d'exécution](#7-flux-dexécution)
-8. [Gestion des erreurs](#8-gestion-des-erreurs)
-9. [Stratégie de test](#9-stratégie-de-test)
-10. [Décisions de conception](#10-décisions-de-conception)
-
----
-
-## 1. Contexte et objectifs de conception
-
-### 1.1 Objectifs
-
-- **Minimalisme** : yggtools doit dépendre du minimum de packages externes.
-- **Reproductibilité** : deux `yggtools init` avec les mêmes paramètres produisent des projets identiques.
-- **Testabilité** : chaque module est indépendant et testable sans effets de bord.
-- **Extensibilité** : ajouter un nouveau script ou template ne nécessite pas de modifier la logique métier.
-
-### 1.2 Contraintes de conception
-
-- Les scripts embarqués sont des fichiers statiques, pas du code généré dynamiquement.
-- Les appels à `uv` et `git` se font via `subprocess` — aucun binding Python n'est disponible.
-- yggtools ne modifie jamais `uv` ni ses fichiers de configuration.
+1. [Design objectives and constraints](#1-design-objectives-and-constraints)
+2. [Package structure](#2-package-structure)
+3. [Sub-package: `quality`](#3-sub-package-quality)
+4. [Sub-package: `repo_init`](#4-sub-package-repo_init)
+5. [Adapter: `uv.py`](#5-adapter-uvpy)
+6. [CLI: `cli.py`](#6-cli-clipy)
+7. [Templates](#7-templates)
+8. [Execution flows](#8-execution-flows)
+9. [Error handling](#9-error-handling)
+10. [Testing strategy](#10-testing-strategy)
+11. [yggtools own CI](#11-yggtools-own-ci)
 
 ---
 
-## 2. Architecture générale
+## 1. Design objectives and constraints
 
-### 2.1 Vue d'ensemble des couches
+### 1.1 Objectives
 
-```
-┌─────────────────────────────────────────────────────┐
-│  COUCHE CLI  (cli.py — Typer)                        │
-│  Parsing des arguments, validation de surface,       │
-│  orchestration des commandes                         │
-└──────────────────────┬──────────────────────────────┘
-                       │
-         ┌─────────────┼─────────────────┐
-         ▼             ▼                 ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│  init.py     │ │  check.py    │ │  update.py   │
-│  (logique    │ │  (logique    │ │  (logique    │
-│   init)      │ │   check)     │ │   update)    │
-└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
-       │                │                │
-       └────────────────┼────────────────┘
-                        │
-         ┌──────────────┼──────────────┐
-         ▼              ▼              ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ scaffold.py  │ │ renderer.py  │ │ uv_runner.py │
-│ (filesystem) │ │ (templates)  │ │ (subprocess) │
-└──────────────┘ └──────────────┘ └──────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │  templates/      │
-              │  (ressources     │
-              │   statiques)     │
-              └──────────────────┘
-```
+- **No scripts in scaffolded projects.** Quality tooling lives inside
+  `yggtools`, versioned and updated as one unit.
+- **All Python, no shell.** The quality pipeline is implemented in Python:
+  testable, type-checked, portable.
+- **Open/Closed.** Adding a new check or a new init step must not require
+  modifying existing code.
+- **Minimal external dependencies.** Only `typer`, `rich`, and `jinja2`.
 
-### 2.2 Structure du package yggtools
+### 1.2 Design patterns used
+
+| Pattern | Where | Why |
+|---------|-------|-----|
+| Registry | `quality/runner.py` | New checks registered via `@register("name")` |
+| Strategy | `quality/checks/` | Each check is one `CheckFn` function |
+| Pipeline | `repo_init/pipeline.py` | Ordered `STEPS` list, independently testable |
+| Adapter | `uv.py` | All subprocess calls in one place |
+
+### 1.3 Constraints
+
+- All subprocess calls (`uv`, `git`) go through `uv.py`.
+- Check functions SHALL NOT raise — failures are returned as `CheckResult`.
+- Templates are Jinja2 files accessed via `importlib.resources`.
+
+---
+
+## 2. Package structure
 
 ```
 src/yggtools/
-├── __init__.py          # version, __all__
-├── cli.py               # point d'entrée Typer
-├── init.py              # orchestration de yggtools init
-├── check.py             # orchestration de yggtools check
-├── update.py            # orchestration de yggtools update
-├── scaffold.py          # opérations filesystem
-├── renderer.py          # rendu des templates Jinja2
-├── uv_runner.py         # wrapper subprocess uv/git
-├── models.py            # dataclasses partagées
-├── suppressions.py      # scan des suppressions inline
-├── report.py            # génération du rapport Markdown
-└── templates/           # ressources statiques (MANIFEST)
-    ├── scripts/
-    │   ├── check.sh
-    │   ├── check_docstrings.py
-    │   ├── code_metrics.py
-    │   ├── generate_report.py
-    │   ├── security_deps.sh
-    │   └── publish.sh
-    ├── Makefile.tmpl
-    ├── pyproject.toml.tmpl
-    ├── gitignore.tmpl
-    ├── README.md.tmpl
-    ├── github_ci.yml.tmpl
-    └── gitlab_ci.yml.tmpl
+├── __init__.py
+├── cli.py                    # Typer app: init-repo, run
+├── uv.py                     # Adapter: uv and git subprocess calls
+├── quality/
+│   ├── __init__.py
+│   ├── runner.py             # Registry, CheckFn protocol, run_all / run_one
+│   ├── report.py             # write_report() → work/report.md
+│   └── checks/
+│       ├── __init__.py
+│       ├── format.py         # @register("format")
+│       ├── lint.py           # @register("ruff"), @register("flake8")
+│       ├── docstrings.py     # @register("docstrings")
+│       ├── typecheck.py      # @register("typecheck")
+│       ├── metrics.py        # @register("metrics")
+│       ├── security.py       # @register("security-code"), @register("security-deps")
+│       └── tests.py          # @register("tests")
+└── repo_init/
+    ├── __init__.py
+    ├── pipeline.py           # STEPS list + run_pipeline()
+    ├── steps.py              # RepoContext, StepError, one function per step
+    └── templates/            # Jinja2 templates (package resource)
+        ├── __init__.py
+        ├── Makefile.tmpl
+        ├── ci.yml.tmpl
+        └── conftest.py.tmpl
 ```
 
 ---
 
-## 3. Modules Python
+## 3. Sub-package: `quality`
 
-### 3.1 `models.py`
-
-Contient les types de données partagés entre les modules.
+### 3.1 `quality/runner.py`
 
 ```python
-@dataclass
-class ProjectContext:
-    """Contexte complet d'un projet yggtools."""
-    project_name: str        # "my-lib"
-    package_name: str        # "my_lib"
-    python_version: str      # "3.12"
-    project_dir: Path        # chemin absolu du projet cible
-    dry_run: bool = False
-    force: bool = False
-    no_git: bool = False
-
-@dataclass
+@dataclass(frozen=True)
 class CheckResult:
-    """Résultat d'une vérification yggtools check."""
-    label: str
-    passed: bool
-    detail: str = ""
-
-@dataclass
-class ScriptFile:
-    """Métadonnées d'un script embarqué."""
-    name: str          # "check.sh"
-    executable: bool   # True pour les .sh
-
-@dataclass(frozen=True)
-class SuppressionItem:
-    """Une annotation de suppression inline trouvée dans le code source."""
-    file: str      # chemin relatif à project_root
-    line: int      # numéro de ligne (1-indexed)
-    kind: str      # "noqa" | "nosec" | "type: ignore" | "pragma: no cover"
-    code: str      # code associé ("E501", "B603", …) ou "" si bare
-    excerpt: str   # texte de la ligne (stripped)
-
-@dataclass(frozen=True)
-class FileChecksum:
-    """Empreinte SHA-256 d'un fichier source audité."""
-    path: str    # chemin relatif à project_root
-    sha256: str  # hexdigest 64 caractères
-
-@dataclass
-class ReportData:
-    """Données agrégées pour la génération du rapport de qualité."""
-    project_name: str
-    project_dir: Path
-    yggtools_version: str
-    generated_at: datetime
-    check_results: list[CheckResult] = field(default_factory=list)
-    checksums: list[FileChecksum] = field(default_factory=list)
-    suppressions: list[SuppressionItem] = field(default_factory=list)
-```
-
-### 3.2 `scaffold.py`
-
-Responsable uniquement des opérations sur le système de fichiers. N'interprète pas les templates.
-
-**Interface publique :**
-
-```python
-def create_directories(ctx: ProjectContext) -> list[Path]:
-    """Crée l'arborescence de répertoires. Retourne les chemins créés."""
-
-def write_file(path: Path, content: str, *, executable: bool = False) -> None:
-    """Écrit un fichier. Crée les parents si nécessaire."""
-
-def copy_script(source: Path, dest: Path) -> None:
-    """Copie un script et applique chmod +x."""
-
-def ensure_gitkeep(directory: Path) -> None:
-    """Crée directory/.gitkeep si le fichier n'existe pas."""
-```
-
-**Répertoires créés :**
-
-| Chemin | Fichiers créés automatiquement |
-|---|---|
-| `src/<package_name>/` | `__init__.py`, `py.typed` |
-| `tests/` | `__init__.py`, `test_<package_name>.py` |
-| `scripts/` | `__init__.py` |
-| `work/` | `.gitkeep` |
-| `doc/` | `.gitkeep` |
-
-**Mode dry-run :** Si `ctx.dry_run is True`, toutes les fonctions logguent l'action sans l'exécuter.
-
-### 3.3 `renderer.py`
-
-Charge et rend les templates Jinja2 embarqués via `importlib.resources`.
-
-**Interface publique :**
-
-```python
-def render_template(template_name: str, ctx: ProjectContext) -> str:
-    """Charge et rend un template depuis yggtools/templates/."""
-
-def list_templates() -> list[str]:
-    """Retourne les noms de templates disponibles."""
-```
-
-**Variables Jinja2 disponibles dans les templates :**
-
-| Variable | Valeur |
-|---|---|
-| `{{ project_name }}` | Nom du projet (`my-lib`) |
-| `{{ package_name }}` | Nom du package Python (`my_lib`) |
-| `{{ python_version }}` | Version Python (`3.12`) |
-| `{{ yggtools_version }}` | Version de yggtools ayant généré le projet |
-
-**Chargement des ressources :**
-
-```python
-from importlib.resources import files
-
-def _load_template(name: str) -> str:
-    return files("yggtools.templates").joinpath(name).read_text(encoding="utf-8")
-```
-
-### 3.4 `uv_runner.py`
-
-Encapsule tous les appels externes (`uv`, `git`). Facilite le mock dans les tests.
-
-**Interface publique :**
-
-```python
-def check_uv_available() -> None:
-    """Lève UvNotFoundError si uv n'est pas dans le PATH."""
-
-def uv_add_dev_deps(project_dir: Path, deps: list[str]) -> None:
-    """Appelle uv add --group dev <deps>."""
-
-def uv_sync(project_dir: Path) -> None:
-    """Appelle uv sync."""
-
-def git_init(project_dir: Path) -> None:
-    """Appelle git init."""
-
-def git_add_all(project_dir: Path) -> None:
-    """Appelle git add -A."""
-
-def git_commit(project_dir: Path, message: str) -> None:
-    """Appelle git commit -m <message>."""
-
-def run_command(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Exécute une commande et retourne le résultat. Lève CommandError en cas d'échec."""
-```
-
-**DEV_DEPS — liste fixe des dépendances dev :**
-
-```python
-DEV_DEPS: list[str] = [
-    "ruff>=0.9",
-    "flake8>=7",
-    "mypy>=1.14",
-    "pytest>=8",
-    "pytest-cov>=6",
-    "bandit>=1.8",
-    "pip-audit>=2.8",
-    "twine>=6",
-]
-```
-
-### 3.5 `init.py`
-
-Orchestre le workflow complet de `yggtools init`. Appelle scaffold, renderer et uv_runner dans l'ordre.
-
-**Interface publique :**
-
-```python
-def run_init(ctx: ProjectContext) -> None:
-    """Exécute l'initialisation complète. Lève InitError en cas d'échec."""
-```
-
-**Algorithme détaillé :**
-
-```
-_validate_preconditions(ctx)
-  ├── check_uv_available()
-  ├── si ctx.project_dir existe et contient pyproject.toml et pas ctx.force → raise ConflictError
-  └── si ctx.dry_run → afficher plan et retourner
-
-create_directories(ctx)
-  └── [src/<pkg>/, tests/, scripts/, work/, doc/]
-
-_write_config_files(ctx)
-  ├── render_template("pyproject.toml.tmpl", ctx) → write "pyproject.toml"
-  ├── render_template("Makefile.tmpl", ctx)       → write "Makefile"
-  ├── render_template("gitignore.tmpl", ctx)      → write ".gitignore"
-  ├── render_template("README.md.tmpl", ctx)      → write "README.md"
-  └── write ".python-version" ← ctx.python_version
-
-_copy_scripts(ctx)
-  └── pour chaque script dans templates/scripts/ → copy_script(src, dst)
-
-_write_ci_files(ctx)      [si pas ctx.no_git]
-  ├── render_template("github_ci.yml.tmpl", ctx) → write ".github/workflows/ci.yml"
-  └── render_template("gitlab_ci.yml.tmpl", ctx) → write ".gitlab-ci.yml"
-
-_install_dev_deps(ctx)
-  ├── uv_add_dev_deps(ctx.project_dir, DEV_DEPS)
-  └── uv_sync(ctx.project_dir)
-
-_init_git(ctx)            [si pas ctx.no_git]
-  ├── git_init(ctx.project_dir)
-  ├── git_add_all(ctx.project_dir)
-  └── git_commit(ctx.project_dir, "chore: yggtools init")
-
-_print_summary(ctx)
-```
-
-### 3.6 `check.py`
-
-Inspecte un projet existant et produit une liste de `CheckResult`.
-
-**Interface publique :**
-
-```python
-def run_check(project_dir: Path, fix: bool = False) -> list[CheckResult]:
-    """Audite le projet et retourne les résultats. Applique fix si demandé."""
-```
-
-**Vérifications effectuées :**
-
-```python
-CHECKS: list[Callable[[Path], CheckResult]] = [
-    _check_src_dir,
-    _check_tests_dir,
-    _check_scripts_dir,
-    _check_work_gitkeep,
-    _check_script_check_sh,
-    _check_script_check_docstrings,
-    _check_script_code_metrics,
-    _check_script_security_deps,
-    _check_script_publish,
-    _check_makefile_targets,
-    _check_pyproject_dev_group,
-    _check_python_version_file,
-]
-```
-
-### 3.7 `update.py`
-
-Compare les fichiers gérés et propose des mises à jour.
-
-**Interface publique :**
-
-```python
-def run_update(project_dir: Path, update_deps: bool = False) -> None:
-    """Compare et met à jour les fichiers gérés interactivement."""
-```
-
-**Fichiers gérés :**
-
-```python
-MANAGED_FILES: list[str] = [
-    "Makefile",
-    "scripts/check.sh",
-    "scripts/check_docstrings.py",
-    "scripts/code_metrics.py",
-    "scripts/security_deps.sh",
-    "scripts/publish.sh",
-]
-```
-
-### 3.8 `suppressions.py`
-
-Scanne les fichiers Python d'un projet à la recherche d'annotations de suppression inline.
-
-**Interface publique :**
-
-```python
-def scan_suppressions(src_dirs: list[Path], project_root: Path) -> list[SuppressionItem]:
-    """Parcourt les répertoires donnés et retourne toutes les suppressions trouvées,
-    triées par fichier puis par numéro de ligne."""
-```
-
-**Fonctions internes :**
-
-```python
-def _scan_file(path: Path, project_root: Path) -> list[SuppressionItem]:
-    """Scanne un fichier individuel. Retourne [] si le fichier est illisible."""
-
-def _extract_suppressions(rel_path: str, lineno: int, text: str) -> list[SuppressionItem]:
-    """Extrait toutes les suppressions d'une ligne. Déduplique par (kind, code)."""
-```
-
-**Patterns reconnus :**
-
-| Kind | Syntaxe |
-|---|---|
-| `noqa` | `# noqa: E501` ou `# noqa` |
-| `nosec` | `# nosec B603` ou `# nosec` |
-| `type: ignore` | `# type: ignore[attr-defined]` ou `# type: ignore` |
-| `pragma: no cover` | `# pragma: no cover` |
-
-**Déduplication :** la paire `(kind, code)` est dédupliquée par ligne via un `set` d'émis. Les répertoires inexistants sont silencieusement ignorés.
-
-### 3.9 `report.py`
-
-Construit et écrit le rapport Markdown de qualité à partir d'un `ReportData`.
-
-**Interface publique :**
-
-```python
-def build_report_data(project_dir: Path) -> ReportData:
-    """Collecte toutes les données (résultats check, checksums, suppressions)."""
-
-def collect_checksums(project_dir: Path) -> list[FileChecksum]:
-    """Retourne les checksums SHA-256 de tous les .py dans src/, triés."""
-
-def render_report(data: ReportData) -> Report:
-    """Construit et retourne un objet mkforge.Report prêt à être rendu."""
-
-def save_report(data: ReportData, output: Path) -> None:
-    """Écrit le rapport Markdown à output (crée les répertoires parents si nécessaire)."""
-```
-
-**Fonctions internes (chapitres) :**
-
-```python
-def _summary_chapter(data: ReportData) -> Chapter: ...
-def _check_results_chapter(results: list[CheckResult]) -> Chapter: ...
-def _checksums_chapter(checksums: list[FileChecksum]) -> Chapter: ...
-def _suppressions_chapter(suppressions: list[SuppressionItem]) -> Chapter: ...
-def _sha256(path: Path) -> str: ...
-```
-
-**Structure du rapport généré :**
-
-```
-# Quality Report — <project_name>
-
-## 1. Summary
-  Tableau : Project, Generated at, yggtools version, Checks passed, Checks failed
-
-## 2. Check Results
-  Tableau : Check | Status | Detail
-
-## 3. File Checksums
-  Tableau : File | SHA-256
-
-## 4. Security Suppressions
-  Total : N suppression(s) found
-  Pour chaque fichier : section avec tableau Line | Kind | Code | Excerpt
-```
-
----
-
-## 4. Templates et ressources embarquées
-
-### 4.1 Déclaration dans `pyproject.toml`
-
-```toml
-[tool.hatch.build.targets.wheel]
-packages = ["src/yggtools"]
-```
-
-Hatch inclut automatiquement `src/yggtools/templates/` dans le wheel car `templates/` est un sous-package de `yggtools` (présence de `__init__.py`). L'utilisation de `force-include` est proscrite : elle crée un répertoire `yggtools/` à la racine de `site-packages` sans `__init__.py`, ce qui provoque une collision de namespace package masquant le vrai package installé.
-
-Les scripts dans `templates/scripts/` sont des fichiers **statiques** (non-templates Jinja2) — ils sont copiés tels quels.
-
-Les fichiers `.tmpl` sont des templates Jinja2.
-
-### 4.2 Accès depuis le code
-
-```python
-from importlib.resources import files, as_file
-
-# Lecture d'un template
-content = files("yggtools.templates").joinpath("Makefile.tmpl").read_text()
-
-# Copie d'un script
-with as_file(files("yggtools.templates.scripts").joinpath("check.sh")) as src:
-    shutil.copy2(src, dest)
-    dest.chmod(dest.stat().st_mode | 0o111)
-```
-
-### 4.3 Template `Makefile.tmpl`
-
-Variables utilisées : `{{ package_name }}`
-
-Cibles définies et leurs dépendances :
-
-```
-.PHONY: format format-check lint flake8 docstrings typecheck metrics security test check ci clean clean-work build check-dist publish-test publish
-
-PYTHON_FILES := src tests scripts
-
-clean-work:
-    find work -not -name '.gitkeep' -not -name 'work' -delete
-
-clean: clean-work
-
-format: clean-work
-    uv run ruff format $(PYTHON_FILES)
-
-format-check: clean-work
-    uv run ruff format --check $(PYTHON_FILES)
-
-lint: clean-work
-    uv run ruff check $(PYTHON_FILES)
-
-flake8: clean-work
-    uv run flake8 $(PYTHON_FILES)
-
-docstrings: clean-work
-    uv run python scripts/check_docstrings.py
-
-typecheck: clean-work
-    uv run mypy src tests scripts
-
-metrics: clean-work
-    uv run python scripts/code_metrics.py
-
-security: clean-work
-    uv run bandit -r src -x tests,work
-    bash scripts/security_deps.sh
-
-test: clean-work
-    uv run pytest
-
-check: clean-work
-    bash scripts/check.sh
-
-ci: clean-work
-    bash scripts/check.sh --ci
-
-build: clean-work
-    bash scripts/publish.sh build
-
-check-dist: clean-work
-    bash scripts/publish.sh check-dist
-
-publish-test: clean-work
-    bash scripts/publish.sh publish-test
-
-publish: clean-work
-    bash scripts/publish.sh publish
-```
-
-### 4.4 Template `pyproject.toml.tmpl`
-
-Voir section 5 du document de conception. Variables : `{{ project_name }}`, `{{ package_name }}`, `{{ python_version }}`.
-
----
-
-## 5. Scripts embarqués — conception détaillée
-
-### 5.1 `check.sh` — structure interne
-
-Le script exécute 9 étapes via la fonction `run()` qui :
-1. Redirige stdout/stderr vers `work/<nom>.log`
-2. Écrit `0` ou `1` dans `work/<nom>.exit` (fichier sentinelle lu par `generate_report.py`)
-3. Affiche PASS/FAIL coloré avec un résumé extrait du log
-
-Après le résumé du pipeline, il appelle `generate_report.py` :
-
-```bash
-REPORT_OUTPUT="${REPORT_OUTPUT:-work/report.md}"
-
-run() {
-    local name="$1"; shift
-    local log="work/${name}.log"
-    local exit_file="work/${name}.exit"
-    if "$@" > "$log" 2>&1; then
-        echo "0" > "$exit_file"
-        ...PASS...
-    else
-        echo "1" > "$exit_file"
-        ...FAIL...
-    fi
-}
-
-# Après les 9 étapes :
-uv run python scripts/generate_report.py --output "$REPORT_OUTPUT" \
-    && printf "Report: %s\n" "$REPORT_OUTPUT" \
-    || printf "Warning: report generation failed\n"
-
-cleanup  # supprime work/*.log, work/*.exit — mais PAS work/report.md
-exit "$FAIL"
-```
-
-**cleanup** exclut `report.md` via `! -name "report.md"` pour que le rapport survive au nettoyage.
-
-### 5.2 `generate_report.py` — structure interne
-
-Script autonome (sans import de `yggtools`) embarqué dans `templates/scripts/` et copié dans `scripts/` des projets générés.
-
-**Algorithme principal :**
-
-```
-main(output: Path)
- ├── _read_check_results(project_root)
- │    └── pour chaque step in PIPELINE_STEPS
- │         ├── lire work/<step>.exit → passed (0=True, 1=False)
- │         └── lire work/<step>.log → detail (dernière ligne pertinente)
- ├── _collect_checksums(project_root)
- │    └── sha256 de chaque .py dans src/
- ├── _scan_suppressions(project_root)
- │    └── scan de src/ + tests/ + scripts/
- ├── _build_report(project_name, results, checksums, suppressions)
- │    └── mkforge.Report avec 4 chapitres
- └── output.write_text(report.render())
-```
-
-**Contraintes de conception :**
-- `importlib.metadata` importé au niveau module (pas dans une fonction) pour respecter `PLC0415`.
-- `_yggtools_version()` attrape `importlib.metadata.PackageNotFoundError` explicitement (pas `Exception`).
-- Le scan de suppressions est découpé en `_scan_file_suppressions()` + `_extract_line_suppressions()` pour maintenir CC ≤ 10.
-- `PIPELINE_STEPS` liste les 9 noms dans l'ordre d'exécution de `check.sh`.
-
-### 5.3 `check_docstrings.py` — structure interne
-
-```
-main()
- ├── scan_directories(SOURCE_ROOTS=["src","tests","scripts"])
- │    └── pour chaque .py → parse_file(path)
- │         └── ast.walk(tree)
- │              ├── FunctionDef / AsyncFunctionDef
- │              │    ├── si name starts with "_" → check_has_docstring()
- │              │    └── si name starts with "test_" → check_requirement_in_docstring()
- │              └── CollectIssues → list[DocstringIssue]
- └── si issues → print "path:line: name: message", exit(1)
-     sinon → print "OK", exit(0)
-```
-
-**Dataclasse :**
-```python
-@dataclass
-class DocstringIssue:
-    path: Path
-    line: int
     name: str
-    message: str
+    passed: bool
+    detail: str
+
+class CheckFn(Protocol):
+    def __call__(self, project_dir: Path) -> CheckResult: ...
+
+_REGISTRY: dict[str, CheckFn] = {}
+
+def register(name: str) -> Callable[[CheckFn], CheckFn]: ...
+def registered_checks() -> list[str]: ...
+def run_one(name: str, project_dir: Path) -> CheckResult: ...
+def run_all(project_dir: Path) -> list[CheckResult]: ...
 ```
 
-### 5.3 `code_metrics.py` — structure interne
+`_REGISTRY` is a module-level dict. `register` is a decorator factory that
+stores the function under `name` and returns it unchanged.
 
-```
-main()
- ├── load_config("pyproject.toml") → MetricsConfig
- │    └── [tool.metrics] max_complexity, max_logical_lines
- ├── pour chaque .py dans src/ tests/ scripts/
- │    └── _file_metric(path) → FileMetric
- │         ├── _logical_line_count(tree)
- │         └── _block_metrics(tree) → list[BlockMetric]
- │              └── _decision_weight(node) → int
- ├── comparer avec seuils → list[MetricResult]
- └── afficher tableau + exit(1) si violation
-```
+`run_one` raises `KeyError` if `name` is not registered. `run_all` iterates
+`_REGISTRY.values()` in insertion order.
 
-**Complexité cyclomatique — poids des nœuds AST :**
+The registry is populated at import time when the check modules are imported.
+`cli.py` imports all check modules at top level so the registry is fully
+populated before any command runs.
 
-| Nœud | Incrément |
-|---|---|
-| `If`, `For`, `While`, `With` | +1 |
-| `ExceptHandler` | +1 |
-| `BoolOp(And/Or)` | +(nb_opérandes - 1) |
-| `Match` | +1 par `case` |
-| Base | 1 |
+### 3.2 `quality/checks/`
 
-### 5.4 `security_deps.sh` — structure interne
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-mkdir -p work
-REQ="work/requirements_runtime.txt"
-
-uv export --no-dev --no-hashes --format requirements-txt > "$REQ"
-
-# Vérifie si le fichier contient des dépendances réelles
-if ! grep -qE '^[a-zA-Z]' "$REQ"; then
-    echo "Aucune dépendance runtime — audit ignoré."
-    exit 0
-fi
-
-uv run pip-audit --strict --requirement "$REQ"
-```
-
-### 5.5 `publish.sh` — structure interne
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-ACTION="${1:?Usage: publish.sh <build|check-dist|publish-test|publish>}"
-DIST_DIR="work/dist"
-
-cleanup() {
-    find "$DIST_DIR" -not -name '.gitkeep' -delete 2>/dev/null || true
-    rmdir "$DIST_DIR" 2>/dev/null || true
-}
-trap cleanup EXIT
-
-mkdir -p "$DIST_DIR"
-
-echo "=== Build ==="
-uv build --out-dir "$DIST_DIR"
-
-echo "=== Validation ==="
-uv run twine check "$DIST_DIR"/*
-
-case "$ACTION" in
-    build|check-dist)
-        echo "Action '$ACTION' terminée."
-        ;;
-    publish-test)
-        echo "=== Publication TestPyPI ==="
-        uv run twine upload --repository testpypi "$DIST_DIR"/*
-        ;;
-    publish)
-        echo "=== Publication PyPI ==="
-        uv run twine upload "$DIST_DIR"/*
-        ;;
-    *)
-        echo "Action inconnue : $ACTION" >&2
-        exit 1
-        ;;
-esac
-```
-
----
-
-## 6. Interface CLI
-
-### 6.1 Définition Typer
+Each module in this package exports exactly one function decorated with
+`@register`. The function signature matches `CheckFn`:
 
 ```python
-import typer
-from rich.console import Console
-
-app = typer.Typer(name="yggtools", help="uv overlay for Python package scaffolding.")
-console = Console()
-
-@app.command()
-def init(
-    project_name: Annotated[str | None, typer.Argument()] = None,
-    python: Annotated[str, typer.Option(help="Python version")] = "3.12",
-    no_git: Annotated[bool, typer.Option("--no-git")] = False,
-    force: Annotated[bool, typer.Option("--force")] = False,
-    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
-) -> None: ...
-
-@app.command()
-def check(
-    fix: Annotated[bool, typer.Option("--fix")] = False,
-) -> None: ...
-
-@app.command()
-def update(
-    deps: Annotated[bool, typer.Option("--deps")] = False,
-) -> None: ...
-```
-
-### 6.2 Point d'entrée `pyproject.toml`
-
-```toml
-[project.scripts]
-yggtools = "yggtools.cli:app"
-```
-
----
-
-## 7. Flux d'exécution
-
-### 7.1 `yggtools init mylib` — séquence nominale
-
-```
-CLI (cli.py)
-  │
-  ├── résoudre project_name = "mylib"
-  ├── construire ProjectContext
-  │
-  └── init.run_init(ctx)
-        │
-        ├── uv_runner.check_uv_available()
-        ├── scaffold.create_directories(ctx)
-        │     └── src/mylib/, tests/, scripts/, work/, doc/
-        ├── scaffold.ensure_gitkeep(work/)
-        ├── renderer.render_template("pyproject.toml.tmpl") → scaffold.write_file()
-        ├── renderer.render_template("Makefile.tmpl")       → scaffold.write_file()
-        ├── renderer.render_template("gitignore.tmpl")      → scaffold.write_file(".gitignore")
-        ├── renderer.render_template("README.md.tmpl")      → scaffold.write_file()
-        ├── scaffold.write_file(".python-version", "3.12")
-        ├── scaffold.write_file("src/mylib/__init__.py", "")
-        ├── scaffold.write_file("src/mylib/py.typed", "")
-        ├── scaffold.write_file("tests/__init__.py", "")
-        ├── scaffold.write_file("tests/test_mylib.py", SMOKE_TEST_TEMPLATE)
-        ├── scaffold.write_file("scripts/__init__.py", "")
-        ├── scaffold.copy_script("templates/scripts/check.sh", "scripts/check.sh")
-        ├── scaffold.copy_script("templates/scripts/check_docstrings.py", ...)
-        ├── scaffold.copy_script("templates/scripts/code_metrics.py", ...)
-        ├── scaffold.copy_script("templates/scripts/security_deps.sh", ...)
-        ├── scaffold.copy_script("templates/scripts/publish.sh", ...)
-        ├── renderer.render_template("github_ci.yml.tmpl") → scaffold.write_file(".github/workflows/ci.yml")
-        ├── renderer.render_template("gitlab_ci.yml.tmpl") → scaffold.write_file(".gitlab-ci.yml")
-        ├── uv_runner.uv_add_dev_deps(project_dir, DEV_DEPS)
-        ├── uv_runner.uv_sync(project_dir)
-        ├── uv_runner.git_init(project_dir)
-        ├── uv_runner.git_add_all(project_dir)
-        ├── uv_runner.git_commit(project_dir, "chore: yggtools init")
-        └── console.print(résumé)
-```
-
-### 7.2 `yggtools check` — séquence nominale
-
-```
-CLI → check.run_check(cwd, fix=False)
-  │
-  ├── pour chaque vérification dans CHECKS
-  │     └── fn(project_dir) → CheckResult
-  │
-  ├── afficher résultats PASS/FAIL (rich Table)
-  │
-  └── sys.exit(0 si tout PASS, 1 sinon)
-```
-
----
-
-## 8. Gestion des erreurs
-
-### 8.1 Hiérarchie des exceptions yggtools
-
-```python
-class UvforgeError(Exception): ...
-class UvNotFoundError(UvforgeError): ...
-class ConflictError(UvforgeError): ...
-class CommandError(UvforgeError):
-    returncode: int
-    stderr: str
-class TemplateError(UvforgeError): ...
-class InitError(UvforgeError): ...
-```
-
-### 8.2 Traitement dans la CLI
-
-```python
-try:
-    init.run_init(ctx)
-except UvNotFoundError:
-    console.print("[red]Erreur:[/] uv non trouvé dans le PATH.")
-    console.print("Installez uv : https://docs.astral.sh/uv/getting-started/installation/")
-    raise typer.Exit(1)
-except ConflictError:
-    console.print("[red]Erreur:[/] Un pyproject.toml existe déjà. Utilisez --force.")
-    raise typer.Exit(1)
-except CommandError as e:
-    console.print(f"[red]Erreur commande (code {e.returncode}):[/]\n{e.stderr}")
-    raise typer.Exit(1)
-```
-
----
-
-## 9. Stratégie de test
-
-### 9.1 Organisation des tests
-
-```
-tests/
-├── unit/
-│   ├── test_scaffold.py        # tests filesystem avec tmp_path
-│   ├── test_renderer.py        # tests rendu templates
-│   ├── test_uv_runner.py       # tests subprocess (mocké)
-│   ├── test_init.py            # tests orchestration (mocks scaffold+renderer+uv)
-│   ├── test_check.py           # tests audit
-│   ├── test_update.py          # tests update
-│   ├── test_suppressions.py    # tests scan suppressions (tous types, dédup, erreurs)
-│   └── test_report.py          # tests génération rapport (chapitres, checksums, écriture)
-├── scripts/
-│   ├── test_check_docstrings.py   # tests check_docstrings.py avec fixtures AST
-│   ├── test_code_metrics.py       # tests code_metrics.py avec fixtures de code
-│   ├── test_publish_sh.py         # tests publish.sh via subprocess dans tmp_path
-│   └── test_security_deps_sh.py   # tests security_deps.sh via subprocess
-└── integration/
-    └── test_full_init.py          # yggtools init → make check → 0
-```
-
-### 9.2 Fixtures partagées (`conftest.py`)
-
-```python
-@pytest.fixture
-def empty_project(tmp_path: Path) -> Path:
-    """Répertoire vide simulant un projet cible."""
-    return tmp_path / "testproject"
-
-@pytest.fixture
-def minimal_project(tmp_path: Path) -> Path:
-    """Projet yggtools complet minimal pour tester check/update."""
-    # Appelle run_init avec un mock uv_runner
+def check_format(project_dir: Path) -> CheckResult:
     ...
 ```
 
-### 9.3 Tests des scripts — approche
+Every check:
+1. Builds a `uv run <tool>` command via `run_uv()`.
+2. Captures stdout/stderr.
+3. Returns `CheckResult(passed=..., detail=...)`.
+4. Does NOT raise.
 
-**`test_check_docstrings.py`** : crée des fichiers Python synthétiques dans `tmp_path`, invoque `check_docstrings.py` via `subprocess.run`, vérifie le code de sortie et la présence de messages dans stdout.
+**Registered checks and their tools:**
+
+| Module | Name | Tool / approach |
+|--------|------|----------------|
+| `format.py` | `format` | `ruff format --check src tests` |
+| `lint.py` | `ruff` | `ruff check src tests` |
+| `lint.py` | `flake8` | `flake8 src tests` |
+| `docstrings.py` | `docstrings` | `flake8 --select=D src tests` |
+| `typecheck.py` | `typecheck` | `mypy src tests` |
+| `metrics.py` | `metrics` | Pure Python AST analysis |
+| `security.py` | `security-code` | `bandit -r src` |
+| `security.py` | `security-deps` | `pip-audit` on `uv export --no-dev` |
+| `tests.py` | `tests` | `pytest` |
+
+### 3.3 `quality/checks/metrics.py` — internal design
+
+`metrics.py` does not call an external tool. It:
+
+1. Reads `[tool.yggtools.code_metrics]` from `pyproject.toml` using
+   `tomllib`.
+2. Walks configured `paths` and applies `ast.parse` on each `.py` file.
+3. Counts cyclomatic complexity using `ast.walk`:
+   - +1 per `If`, `For`, `While`, `ExceptHandler`, `With`, `Assert`,
+     `comprehension`
+   - +(`n-1`) per `BoolOp` with `n` operands
+   - +1 per `IfExp`
+4. Counts logical lines: `ast.stmt` nodes excluding `FunctionDef`,
+   `AsyncFunctionDef`, `ClassDef`.
+5. Returns a `CheckResult` listing the first violation or confirming all
+   metrics pass.
+
+Configuration defaults (read from `[tool.yggtools.code_metrics]`):
+
+| Key | Default |
+|-----|---------|
+| `paths` | `["src", "tests"]` |
+| `exclude` | `[]` |
+| `max_cyclomatic_complexity` | `10` |
+| `max_module_logical_lines` | `900` |
+
+### 3.4 `quality/report.py`
 
 ```python
-def test_private_function_without_docstring(tmp_path):
-    (tmp_path / "src" / "pkg").mkdir(parents=True)
-    (tmp_path / "src" / "pkg" / "mod.py").write_text("def _helper(): pass\n")
-    result = subprocess.run(
-        ["python", str(SCRIPT_PATH)],
-        cwd=tmp_path, capture_output=True, text=True
-    )
-    assert result.returncode == 1
-    assert "_helper" in result.stdout
+def write_report(
+    results: list[CheckResult],
+    project_dir: Path,
+    output: Path,
+) -> None: ...
 ```
 
-**`test_publish_sh.py`** : crée un package Python minimal buildable dans `tmp_path`, exécute `publish.sh build`, vérifie que `work/dist/` est créé puis supprimé.
-
-**`test_code_metrics.py`** : génère du code Python avec une complexité cyclomatique connue (ex. une fonction avec 5 `if` = complexité 6), vérifie que le script rapporte la bonne valeur.
-
-### 9.4 Couverture des scripts shell
-
-Les scripts shell ne peuvent pas être couverts par `pytest-cov`. La couverture est assurée par :
-- Des tests paramétrés couvrant chaque branche conditionnelle (`ACTION=build`, `ACTION=publish`, fichier vide, etc.)
-- Des tests de cas limites (répertoire `work/dist/` déjà présent, pas de dépendances runtime)
+Writes a Markdown file with a summary table (pass/fail counts), a results
+table (name, status, detail), and a timestamp. Creates parent directories
+if they do not exist.
 
 ---
 
-## 10. Décisions de conception
+## 4. Sub-package: `repo_init`
 
-### 10.1 Pourquoi les scripts sont des fichiers statiques et non des templates
+### 4.1 `repo_init/steps.py`
 
-Les scripts (`check.sh`, `publish.sh`, etc.) sont copiés tels quels sans variables Jinja2. Justification : ils doivent pouvoir être modifiés par l'utilisateur après la génération, et leur logique ne dépend pas du nom du projet.
+```python
+@dataclass(frozen=True)
+class RepoContext:
+    project_name: str
+    python_version: str
+    parent_dir: Path
+    no_git: bool = False
+    dry_run: bool = False
 
-### 10.2 Pourquoi `importlib.resources` et non un chemin relatif
+    @property
+    def project_dir(self) -> Path: ...
 
-`importlib.resources` fonctionne correctement après installation via `uv tool install` (le package est dans un wheel), alors qu'un chemin relatif à `__file__` peut être incorrect dans certains contextes d'installation.
+class StepError(RuntimeError): ...
+```
 
-### 10.3 Pourquoi `subprocess` pour les appels uv/git
+Each step is a top-level function `step_<name>(ctx: RepoContext) -> None`.
+Steps raise `StepError` on failure; they never swallow exceptions silently.
 
-uv n'expose pas d'API Python publique. `subprocess` est le seul moyen fiable d'intégrer avec un binaire externe. L'encapsulation dans `uv_runner.py` isole ce couplage et facilite le mock dans les tests.
+| Function | What it does |
+|----------|-------------|
+| `step_uv_init` | Calls `uv_init_lib(parent_dir, name, python)` |
+| `step_add_dev_deps` | Calls `uv_add_dev(project_dir, DEV_DEPS)` |
+| `step_patch_pyproject` | Appends missing tool sections to `pyproject.toml` |
+| `step_write_makefile` | Renders `Makefile.tmpl` → `Makefile` |
+| `step_write_tests_dir` | Creates `tests/__init__.py` and `tests/conftest.py` |
+| `step_write_work_dir` | Creates `work/.gitkeep` |
+| `step_write_ci` | Renders `ci.yml.tmpl` → `.github/workflows/ci.yml` |
+| `step_git_commit` | Calls `git_commit(project_dir, "chore: yggtools init-repo")` |
 
-### 10.4 Pourquoi Typer et non Click
+`step_write_ci` and `step_git_commit` are no-ops when `ctx.no_git is True`.
 
-Typer génère les parseurs d'arguments depuis les annotations de type Python, ce qui évite la duplication entre les annotations mypy et la définition CLI. Typer supporte nativement l'autocomplétion shell. Il est utilisé en production par des outils de l'écosystème uv/ruff.
+Template rendering uses `importlib.resources.files("yggtools.repo_init.templates")`.
 
-### 10.5 Séparation `scaffold.py` / `renderer.py` / `init.py`
+### 4.2 `repo_init/pipeline.py`
 
-- `scaffold.py` ne sait rien des templates — il manipule des `Path` et des `str`.
-- `renderer.py` ne sait rien du filesystem — il retourne des `str`.
-- `init.py` orchestre les deux, ce qui permet de tester chaque composant indépendamment.
+```python
+@dataclass(frozen=True)
+class PipelineStep:
+    name: str
+    fn: Callable[[RepoContext], None]
 
-### 10.6 `work/` : contenu ignoré par git, répertoire tracké
+STEPS: list[PipelineStep] = [
+    PipelineStep("uv init --lib",           step_uv_init),
+    PipelineStep("add dev dependencies",     step_add_dev_deps),
+    PipelineStep("patch pyproject.toml",     step_patch_pyproject),
+    PipelineStep("write Makefile",           step_write_makefile),
+    PipelineStep("create tests/",            step_write_tests_dir),
+    PipelineStep("create work/",             step_write_work_dir),
+    PipelineStep("write CI workflows",       step_write_ci),
+    PipelineStep("git commit",               step_git_commit),
+]
 
-Le fichier `.gitkeep` est créé par yggtools et ajouté dans `.gitignore` avec l'exception `!work/.gitkeep`. Le contenu (`*.log`, `.coverage`, `dist/`, `requirements_runtime.txt`) est ignoré par la règle `work/*`. Ceci reproduit exactement le comportement de mkforge.
+def run_pipeline(ctx: RepoContext) -> None: ...
+```
 
-### 10.7 Pourquoi `generate_report.py` est un script autonome sans import de `yggtools`
-
-Le script est copié dans `scripts/` du projet cible et exécuté par `uv run` dans cet environnement, qui n'a pas `yggtools` installé. Un import de `yggtools` ferait échouer l'exécution dans tout projet généré. La duplication de la logique de scan de suppressions entre `yggtools.suppressions` et `generate_report.py` est volontaire et documentée.
-
-### 10.8 Pourquoi `mkforge` et non `string.Template` pour le rapport
-
-`mkforge` fournit un DSL Python orienté domaine (`Report`, `Chapter`, `Section`, `Table`, `Paragraph`) avec gestion automatique de la table des matières et des niveaux de titres. `string.Template` produirait du code de concaténation fragile et difficile à tester indépendamment. La dépendance est justifiée car `mkforge` est la bibliothèque de référence de génération de rapports Markdown pour ce projet.
-
-### 10.9 Pourquoi `REPORT_OUTPUT` et non une option CLI de `yggtools`
-
-Le rapport est produit par `check.sh`, pas par `yggtools`. L'utilisateur peut intégrer `check.sh` dans des pipelines CI qui définissent déjà `REPORT_OUTPUT` comme variable d'environnement. Une option CLI supplémentaire sur `yggtools` aurait couplé la génération du rapport à la CLI alors que le workflow principal passe par `make check → check.sh`.
-
-### 10.10 Pourquoi les fichiers sentinelles `work/<nom>.exit`
-
-`generate_report.py` doit reconstruire les résultats du pipeline après que `check.sh` ait terminé. Lire les codes de sortie depuis les fichiers `work/<nom>.exit` est plus robuste que parser les logs (format non stable). Les fichiers sentinelles sont une interface contractuelle explicite entre `check.sh` et `generate_report.py`.
-
-### 10.11 Pourquoi les workflows CI sont des templates Jinja2 et non des fichiers statiques
-
-Contrairement aux scripts de qualité (copiés tels quels), les workflows CI doivent être paramétrés par la version Python cible du projet (`{{ python_version }}`). Un fichier statique forcerait toujours la même version, ou imposerait à l'utilisateur de l'éditer manuellement. La variable `{{ python_version }}` est la seule variable Jinja2 utilisée dans ces templates ; la version 3.13 est fixe car c'est la version stable la plus récente au moment de la génération.
-
-### 10.12 Pourquoi les workflows CI sont omis avec `--no-git`
-
-Les workflows GitHub Actions et GitLab CI n'ont de sens que dans un dépôt git avec un remote configuré. Générer ces fichiers sans dépôt git crée une confusion sans valeur ajoutée. L'option `--no-git` signale explicitement l'absence d'intention de versionnement — omettre les workflows CI est la conséquence logique.
+`run_pipeline` iterates `STEPS` and calls `step.fn(ctx)`. It propagates
+`StepError` to the caller (the CLI).
 
 ---
 
-## 11. CI du projet yggtools lui-même
+## 5. Adapter: `uv.py`
 
-### 11.1 Fichiers
+All subprocess calls to `uv` and `git` go through this module.
 
-| Fichier | Déclencheur | Rôle |
-|---|---|---|
-| `.github/workflows/ci.yml` | push / PR sur `main`, `master` | Pipeline qualité complet |
-| `.github/workflows/publish.yml` | tag `v*.*.*` | Gate qualité + build + publish PyPI |
+```python
+DEV_DEPS: list[str]            # fixed list of quality tools + yggtools
 
-### 11.2 Workflow CI (`.github/workflows/ci.yml`)
+class UvNotFoundError(RuntimeError): ...
+class CommandError(RuntimeError):
+    returncode: int
+    stderr: str
+
+@dataclass(frozen=True)
+class RunResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+def check_uv_available() -> None: ...
+def run_uv(args, *, cwd, capture, check) -> RunResult: ...
+def uv_init_lib(project_dir, project_name, python_version) -> None: ...
+def uv_add_dev(project_dir, deps) -> None: ...
+def uv_sync(project_dir) -> None: ...
+def git_commit(project_dir, message) -> None: ...
+```
+
+`run_uv` uses `subprocess.run` with `check=False` and raises `CommandError`
+manually when `check=True` and the return code is non-zero. This gives
+uniform error reporting.
+
+`git_commit` runs `git add -A` then `git commit -m <message>` in sequence,
+both with `check=True`.
+
+---
+
+## 6. CLI: `cli.py`
+
+```python
+app = typer.Typer(name="yggtools")
+
+@app.command("init-repo")
+def init_repo(
+    project_name: str,
+    python: str = "3.12",
+    no_git: bool = False,
+    dry_run: bool = False,
+    parent_dir: Path | None = None,
+) -> None: ...
+
+@app.command("run")
+def run(
+    check_name: str | None = None,
+    all_checks: bool = False,
+    ci: bool = False,
+    path: Path | None = None,
+) -> None: ...
+```
+
+All check modules are imported at module level in `cli.py` to populate the
+registry before any command is dispatched.
+
+### `init-repo` flow
 
 ```
-trigger: push ou PR → main / master
+init_repo()
+  ├── build RepoContext
+  ├── if dry_run → _print_dry_run_plan(ctx) and return
+  ├── check_uv_available()        → exit 1 on UvNotFoundError
+  ├── _run_with_progress(ctx)     → exit 1 on StepError or Exception
+  └── print success message
+```
 
-job: quality (matrix: 3.12, 3.13)
+### `run` flow
+
+```
+run()
+  ├── if not (check_name or all_checks) → exit 1 with usage error
+  ├── resolve project_dir (path or cwd)
+  ├── if all_checks:
+  │     results = run_all(project_dir)
+  │     if ci: write_report(results, project_dir, work/report.md)
+  │     exit 0 if all passed else 1
+  └── else:
+        result = run_one(check_name, project_dir)
+        exit 0 if passed else 1
+```
+
+---
+
+## 7. Templates
+
+Templates are Jinja2 files in `src/yggtools/repo_init/templates/`, accessed
+at runtime via:
+
+```python
+importlib.resources.files("yggtools.repo_init.templates").joinpath(name)
+```
+
+| File | Variables |
+|------|-----------|
+| `Makefile.tmpl` | `project_name` |
+| `ci.yml.tmpl` | `python_version` |
+| `conftest.py.tmpl` | (none) |
+
+The `templates/` directory is a Python package (contains `__init__.py`) so
+hatchling includes it in the wheel automatically.
+
+---
+
+## 8. Execution flows
+
+### 8.1 `yggtools init-repo my-lib`
+
+```
+CLI
+ └── RepoContext(project_name="my-lib", python_version="3.12", ...)
+      │
+      └── run_pipeline(ctx)
+           ├── step_uv_init       → uv_init_lib(parent, "my-lib", "3.12")
+           ├── step_add_dev_deps  → uv_add_dev(project_dir, DEV_DEPS)
+           ├── step_patch_pyproject → read pyproject.toml, append sections
+           ├── step_write_makefile  → render Makefile.tmpl → Makefile
+           ├── step_write_tests_dir → tests/__init__.py, tests/conftest.py
+           ├── step_write_work_dir  → work/.gitkeep
+           ├── step_write_ci        → .github/workflows/ci.yml
+           └── step_git_commit      → git add -A && git commit
+```
+
+### 8.2 `yggtools run --all` (from inside a project)
+
+```
+CLI
+ └── run_all(project_dir)
+      ├── check_format(project_dir)       → run_uv(["run","ruff","format","--check",...])
+      ├── check_ruff(project_dir)         → run_uv(["run","ruff","check",...])
+      ├── check_flake8(project_dir)       → run_uv(["run","flake8",...])
+      ├── check_docstrings(project_dir)   → run_uv(["run","flake8","--select=D",...])
+      ├── check_typecheck(project_dir)    → run_uv(["run","mypy",...])
+      ├── check_metrics(project_dir)      → AST analysis (pure Python)
+      ├── check_security_code(project_dir)→ run_uv(["run","bandit",...])
+      ├── check_security_deps(project_dir)→ run_uv(["run","pip-audit",...])
+      └── check_tests(project_dir)        → run_uv(["run","pytest"])
+```
+
+---
+
+## 9. Error handling
+
+### 9.1 Exception hierarchy
+
+```python
+class UvNotFoundError(RuntimeError): ...
+
+class CommandError(RuntimeError):
+    returncode: int
+    stderr: str
+
+class StepError(RuntimeError): ...
+```
+
+### 9.2 CLI handling
+
+| Exception | Handler |
+|-----------|---------|
+| `UvNotFoundError` | Print install URL, exit 1 |
+| `StepError` | Print step name and message, exit 1 |
+| `Exception` | Print unexpected error, exit 1 |
+
+Check functions (`CheckFn`) never raise — they return `CheckResult(passed=False)`.
+
+---
+
+## 10. Testing strategy
+
+### 10.1 Test organisation
+
+```
+tests/
+├── conftest.py               # project_dir fixture
+└── unit/
+    ├── test_runner.py        # Registry: register, run_one, run_all
+    ├── test_checks.py        # All 9 check functions (mocked run_uv)
+    ├── test_report.py        # write_report: content, file creation
+    ├── test_steps.py         # All 8 pipeline steps (mocked uv.py)
+    ├── test_pipeline.py      # STEPS non-empty, unique names, execution order
+    ├── test_uv.py            # Adapter: check_uv_available, run_uv, git_commit
+    └── test_cli.py           # init-repo and run commands (mocked internals)
+```
+
+### 10.2 Key testing patterns
+
+**Registry isolation:** each test that mutates `_REGISTRY` saves `dict(_REGISTRY)`,
+clears it, and restores it in a `finally` block.
+
+**Pipeline step isolation:** steps are tested with a `RepoContext` pointing
+to `tmp_path`. All uv/git calls are patched via `unittest.mock.patch`.
+
+**Frozen dataclass patching:** `PipelineStep` is frozen, so pipeline tests
+patch `STEPS` wholesale:
+
+```python
+spied = [type(step)(name=step.name, fn=_make_spy(step.name)) for step in STEPS]
+with patch("yggtools.repo_init.pipeline.STEPS", spied):
+    run_pipeline(ctx)
+```
+
+### 10.3 Coverage
+
+100% branch coverage is enforced via `--cov-fail-under=100`. Templates are
+excluded from coverage measurement (`omit = ["src/yggtools/repo_init/templates/*"]`).
+
+---
+
+## 11. yggtools own CI
+
+### 11.1 Files
+
+| File | Trigger | Role |
+|------|---------|------|
+| `.github/workflows/ci.yml` | push / PR → `main`, `master` | Full quality pipeline |
+| `.github/workflows/publish.yml` | tag `v*.*.*` | Quality gate + PyPI publish |
+
+### 11.2 CI workflow
+
+```
+trigger: push or PR → main / master
+
+job: quality (matrix: 3.12, 3.13, fail-fast: false)
   ├── actions/checkout@v4
-  ├── astral-sh/setup-uv@v5 (cache activé)
+  ├── astral-sh/setup-uv@v5 (cache enabled)
   ├── uv python install <version>
   ├── uv sync --python <version>
   ├── make ci
   └── actions/upload-artifact@v4  (work/report.md, if: always)
 ```
 
-`fail-fast: false` garantit que les deux versions sont testées même si l'une échoue.
-
-### 11.3 Workflow de publication (`.github/workflows/publish.yml`)
+### 11.3 Publish workflow
 
 ```
-trigger: push d'un tag v[0-9]+.[0-9]+.[0-9]*
+trigger: push of tag v[0-9]+.[0-9]+.[0-9]*
 
 job: quality (Python 3.12)
-  └── make ci   ← gate bloquant
+  └── make ci   ← blocking gate
 
 job: publish (needs: quality)
-  permissions: id-token: write   ← OIDC pour PyPI Trusted Publishing
+  permissions: id-token: write   ← OIDC for PyPI Trusted Publishing
   environment: pypi
   ├── uv build --out-dir dist/
   ├── uv run twine check dist/*
   └── pypa/gh-action-pypi-publish@release/v1
 ```
 
-### 11.4 Configuration PyPI Trusted Publishing requise
+### 11.4 PyPI Trusted Publishing configuration
 
-Avant le premier déploiement, configurer sur pypi.org → Project → Publishing :
+Before the first publish, configure on pypi.org → Project → Publishing:
 
-| Champ | Valeur |
-|---|---|
+| Field | Value |
+|-------|-------|
 | Owner | `antoinebarre` |
 | Repository | `yggtools` |
 | Workflow filename | `publish.yml` |
 | Environment | `pypi` |
 
-Aucun secret `PYPI_TOKEN` n'est nécessaire dans le dépôt GitHub. Le token est émis automatiquement par GitHub via OIDC lors de l'exécution du workflow.
+No `PYPI_TOKEN` secret is needed in the GitHub repository.

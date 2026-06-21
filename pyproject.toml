@@ -13,7 +13,6 @@ authors = [{ name = "Antoine Barré" }]
 keywords = ["uv", "scaffold", "packaging", "ci", "quality", "automation"]
 dependencies = [
     "jinja2>=3.1",
-    "mkforge>=0.1",
     "rich>=13",
     "typer>=0.12",
 ]
@@ -38,7 +37,7 @@ cache_dir = "work/.pytest_cache"
 data_file = "work/.coverage"
 source = ["src/yggtools"]
 omit = [
-    "src/yggtools/templates/*",
+    "src/yggtools/repo_init/templates/*",
 ]
 
 [tool.mypy]
@@ -53,13 +52,14 @@ line-length = 79
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["TC001", "TC002", "TC003", "TC004"]
+ignore = ["TC001", "TC002", "TC003", "TC004", "COM812"]
 
 [tool.ruff.lint.per-file-ignores]
 # CLI entry points use bool flags with defaults — FBT002 is intentional here.
-"src/yggtools/cli.py" = ["FBT002"]
-# Test files: assert statements (S101) and magic values (PLR2004) are expected.
-"tests/**" = ["S101", "PLR2004", "S603", "S607"]
+"src/yggtools/cli.py" = ["FBT002", "ARG001"]
+# Test files: assert statements (S101), magic values (PLR2004), unused stub
+# arguments (ARG001/ARG002), and subprocess noqa directives are expected.
+"tests/**" = ["S101", "PLR2004", "S603", "S607", "ARG001", "ARG002"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -71,6 +71,7 @@ docstring-convention = "google"
 count = true
 show-source = true
 statistics = true
+extend-ignore = ["B042"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "work", ".venv"]

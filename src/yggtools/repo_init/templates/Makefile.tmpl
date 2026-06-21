@@ -30,6 +30,3 @@ security: clean
 
 build: clean
 	uv build --out-dir dist/
-
-ci: clean
-	PYTHONPATH=src uv run python -m yggtools.cli pipeline

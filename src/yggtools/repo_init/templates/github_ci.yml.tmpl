@@ -6,30 +6,30 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ "{{" }} github.workflow {{ "}}" }}-${{ "{{" }} github.ref {{ "}}" }}
   cancel-in-progress: true
 
 jobs:
   quality:
-    name: Quality (Python ${{ matrix.python-version }})
+    name: Quality (Python ${{ "{{" }} matrix.python-version {{ "}}" }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["{{ python_version }}", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --python ${{ matrix.python-version }}
+      - run: uv python install ${{ "{{" }} matrix.python-version {{ "}}" }}
+      - run: uv sync --python ${{ "{{" }} matrix.python-version {{ "}}" }}
       - name: Quality pipeline
-        run: uv run yggtools pipeline
+        run: PYTHONPATH=src uv run python -m yggtools.cli pipeline
       - name: Upload quality reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: quality-py${{ matrix.python-version }}
+          name: quality-py${{ "{{" }} matrix.python-version {{ "}}" }}
           path: work/reports/
           if-no-files-found: ignore
