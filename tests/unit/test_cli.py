@@ -14,12 +14,19 @@ from yggtools.cli import (
     _is_int,
     _print_objectives_table,
     _print_run_summary,
+    _read_python_version,
+    _reset_steps,
     _run_with_progress,
     app,
 )
 from yggtools.quality.pipeline import PipelineResult
 from yggtools.quality.runner import _REGISTRY, CheckFn, CheckResult
-from yggtools.repo_init.pipeline import STEPS_INIT, PipelineStep
+from yggtools.repo_init.pipeline import (
+    STEPS_INIT,
+    STEPS_RESET_AI,
+    STEPS_RESET_CI,
+    PipelineStep,
+)
 from yggtools.repo_init.steps import RepoContext, StepError
 from yggtools.uv import UvNotFoundError
 from yggtools.versioning import VersionError
@@ -651,6 +658,124 @@ class TestInit:
         step_names = [s.name for s in received_steps]
         assert "uv init --lib" not in step_names
         assert len(received_steps) == len(STEPS_INIT)
+
+
+class TestReset:
+    """Tests for the reset command."""
+
+    def test_exits_1_when_no_pyproject(self, tmp_path: Path) -> None:
+        """Requirement: reset must exit 1 outside a uv project."""
+        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+            result = _runner.invoke(app, ["reset"])
+        assert result.exit_code == 1
+
+    def test_dry_run_lists_selected_steps(self, tmp_path: Path) -> None:
+        """Requirement: reset --dry-run must list planned rewrites."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "my-lib"\n',
+            encoding="utf-8",
+        )
+        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+            result = _runner.invoke(
+                app, ["reset", "--only", "ai", "--dry-run"]
+            )
+        assert result.exit_code == 0
+        assert "write AGENTS.md" in result.output
+        assert "write CI workflows" not in result.output
+
+    def test_invalid_only_exits_1(self, tmp_path: Path) -> None:
+        """Requirement: reset must reject unknown --only values."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "my-lib"\n',
+            encoding="utf-8",
+        )
+        with patch("yggtools.cli.Path.cwd", return_value=tmp_path):
+            result = _runner.invoke(app, ["reset", "--only", "bad"])
+        assert result.exit_code == 1
+
+    def test_uses_selected_reset_steps(self, tmp_path: Path) -> None:
+        """Requirement: reset --only ci must run only CI reset steps."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "my-lib"\n',
+            encoding="utf-8",
+        )
+        received_steps: list[PipelineStep] = []
+
+        def _capture_steps(
+            ctx: RepoContext,
+            steps: list[PipelineStep] | None = None,
+        ) -> None:
+            """Capture reset steps passed to the runner.
+
+            Args:
+                ctx: Pipeline context (ignored).
+                steps: Steps list passed by the caller.
+            """
+            if steps is not None:
+                received_steps.extend(steps)
+
+        with (
+            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli._run_with_progress",
+                side_effect=_capture_steps,
+            ),
+        ):
+            result = _runner.invoke(app, ["reset", "--only", "ci"])
+
+        assert result.exit_code == 0
+        assert received_steps == STEPS_RESET_CI
+
+    def test_exits_1_on_step_error(self, tmp_path: Path) -> None:
+        """Requirement: reset must exit 1 on step failure."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "my-lib"\n',
+            encoding="utf-8",
+        )
+        with (
+            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli._run_with_progress",
+                side_effect=StepError("step failed"),
+            ),
+        ):
+            result = _runner.invoke(app, ["reset"])
+        assert result.exit_code == 1
+
+    def test_exits_1_on_unexpected_exception(self, tmp_path: Path) -> None:
+        """Requirement: reset must exit 1 on unexpected error."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "my-lib"\n',
+            encoding="utf-8",
+        )
+        with (
+            patch("yggtools.cli.Path.cwd", return_value=tmp_path),
+            patch(
+                "yggtools.cli._run_with_progress",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            result = _runner.invoke(app, ["reset"])
+        assert result.exit_code == 1
+
+    def test_reset_steps_helper_selects_ai_group(self) -> None:
+        """Requirement: _reset_steps must select the AI group."""
+        assert _reset_steps("ai") == STEPS_RESET_AI
+
+    def test_read_python_version_uses_file(self, tmp_path: Path) -> None:
+        """Requirement: .python-version configures generated CI."""
+        (tmp_path / ".python-version").write_text(
+            "3.13\n",
+            encoding="utf-8",
+        )
+        assert _read_python_version(tmp_path) == "3.13"
+
+    def test_read_python_version_defaults_when_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Requirement: missing .python-version falls back to default."""
+        assert _read_python_version(tmp_path) == "3.12"
 
 
 class TestIncreaseVersion:

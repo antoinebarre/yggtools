@@ -224,6 +224,37 @@ If the project was created without `--lib`, `yggtools init` creates
 
 ---
 
+### `yggtools reset`
+
+```
+yggtools reset [OPTIONS]
+```
+
+Restore yggtools-generated files in the current repository. This is useful
+when CI workflows, AI instruction files, or the generated `Makefile` were
+edited locally and should return to the defaults from the installed
+`yggtools` version.
+
+`reset` rewrites only generated files. It does not touch dependencies,
+`pyproject.toml`, source files, tests, or git history.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--only all\|ai\|ci\|scripts` | `all` | Limit which generated files are restored |
+| `--python VERSION` | `.python-version` or `3.12` | Target Python version for generated CI |
+| `--dry-run` | off | Print planned rewrites without writing |
+
+**Examples:**
+
+```bash
+yggtools reset
+yggtools reset --only ai
+yggtools reset --only ci --python 3.13
+yggtools reset --dry-run
+```
+
+---
+
 ### `yggtools pipeline`
 
 ```
